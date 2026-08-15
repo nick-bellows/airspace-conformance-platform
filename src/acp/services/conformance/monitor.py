@@ -66,10 +66,10 @@ DEFAULT_HORIZON_S = 60.0
 #: monitor prefers it; these exist so a deployment without one still has
 #: defensible thresholds rather than none.
 #:
-#: They are the same figures the training run produced, on the turning stratum
-#: of the held-out split. Turning rather than the overall median because it is
-#: the hard case: calibrating on cruise, where error is tens of metres, would
-#: make every turn an alert.
+#: They are the figures the training run produced on the turning stratum of the
+#: held-out split, rounded to three decimals. Turning rather than the overall
+#: median because it is the hard case: calibrating on cruise, where error is
+#: tens of metres, would make every turn an alert.
 FALLBACK_MODEL_ERROR_NM = {30.0: 0.412, 60.0: 1.220, 120.0: 2.732}
 
 #: The same for dead reckoning, used when the predictor has fallen back to

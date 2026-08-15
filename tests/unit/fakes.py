@@ -18,7 +18,7 @@ from datetime import datetime
 
 from pydantic import BaseModel
 
-from acp.common.contracts import TrackUpdate
+from acp.common.contracts import Alert, AlertState, TrackUpdate
 from acp.common.messaging import Envelope
 
 
@@ -96,6 +96,30 @@ class FakeHistoryStore:
     @property
     def written(self) -> list[TrackUpdate]:
         return [u for batch in self.batches for u in batch]
+
+
+@dataclass
+class FakeAlertStore:
+    """Records the active alert set, keyed like Redis would."""
+
+    current: dict[str, Alert] = field(default_factory=dict)
+    healthy: bool = True
+
+    async def apply(self, alerts: Sequence[Alert]) -> None:
+        for alert in alerts:
+            if alert.state is AlertState.CLEARED:
+                self.current.pop(alert.alert_key, None)
+            else:
+                self.current[alert.alert_key] = alert
+
+    async def active(self) -> list[Alert]:
+        return sorted(self.current.values(), key=lambda a: a.updated_at, reverse=True)
+
+    async def ping(self) -> bool:
+        return self.healthy
+
+    async def close(self) -> None:
+        return None
 
 
 @dataclass

@@ -364,11 +364,76 @@ async function poll() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Live stream, with polling as the fallback
+//
+// The WebSocket is preferred: the server reads the picture once and pushes the
+// same frame to every viewer, so load does not grow with the audience. Polling
+// remains because a proxy that does not forward Upgrade is a very ordinary
+// deployment problem, and a display that goes blank behind one would be worse
+// than a display that quietly costs a little more.
+// ---------------------------------------------------------------------------
+
+let socket = null;
+let pollTimer = null;
+let reconnectDelayMs = 1000;
+
+function startPolling() {
+  if (pollTimer !== null) return;
+  poll();
+  pollTimer = setInterval(poll, POLL_INTERVAL_MS);
+}
+
+function stopPolling() {
+  if (pollTimer === null) return;
+  clearInterval(pollTimer);
+  pollTimer = null;
+}
+
+function connect() {
+  const scheme = window.location.protocol === "https:" ? "wss:" : "ws:";
+  socket = new WebSocket(`${scheme}//${window.location.host}/v1/stream`);
+
+  socket.addEventListener("open", () => {
+    reconnectDelayMs = 1000;
+    stopPolling();
+    setLink("live", "live");
+  });
+
+  socket.addEventListener("message", (event) => {
+    const frame = JSON.parse(event.data);
+    // One frame carries both, so they can never be rendered a beat apart the
+    // way two independent requests could.
+    updateAlerts({ generated_at: frame.generated_at, alerts: frame.alerts });
+    ingest({
+      generated_at: frame.generated_at,
+      count: frame.tracks.length,
+      tracks: frame.tracks,
+    });
+    setLink("live", "live");
+  });
+
+  socket.addEventListener("close", () => {
+    socket = null;
+    setLink("down", "reconnecting");
+    // Fall back to polling immediately so the display keeps updating while the
+    // socket is down, and back off so a server that is properly gone is not
+    // hammered.
+    startPolling();
+    setTimeout(connect, reconnectDelayMs);
+    reconnectDelayMs = Math.min(reconnectDelayMs * 2, 15000);
+  });
+
+  socket.addEventListener("error", () => {
+    if (socket) socket.close();
+  });
+}
+
 window.addEventListener("resize", () => {
   resize();
   render();
 });
 
 resize();
-poll();
-setInterval(poll, POLL_INTERVAL_MS);
+startPolling();
+connect();

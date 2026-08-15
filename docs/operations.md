@@ -58,10 +58,29 @@ The feed loops, so a scenario left running restarts rather than going empty.
 | `GET /` | The plan-view display |
 | `GET /docs` | Generated OpenAPI documentation |
 | `GET /health` | Liveness. Checks nothing external — see below |
-| `GET /ready` | Readiness. Checks Redis and Postgres, names which failed |
+| `GET /ready` | Readiness. Checks Redis and Postgres, names which failed. **503 is normal** when a dependency is down |
 | `GET /v1/tracks?window_s=20` | Current airspace picture |
-| `GET /v1/tracks/{track_id}/history?limit=600` | Where a track has been |
-| `GET /v1/alerts?kind=predicted_conflict` | Active advisories |
+| `GET /v1/tracks/{track_id}/history?limit=600` | Where a track has been. 404 if unknown |
+| `GET /v1/alerts?kind=predicted_conflict&kind=emergency_squawk` | Active advisories. Repeat `kind` to filter; omit for all |
+| `WS /v1/stream` | Live picture pushed once a second |
+
+The committed specification is [`contracts/openapi.json`](../contracts/openapi.json),
+and CI fails if it drifts from the code. **The WebSocket is deliberately absent
+from it** — OpenAPI 3.1 cannot describe one. Its frame format is `StreamFrame` in
+`acp/services/api/stream.py`: the same tracks and alerts the REST endpoints
+return, in a single message.
+
+### The stream
+
+One background task reads Redis per interval and pushes the same frame to every
+connected client, so backend load is a function of the airspace rather than of
+how many people are watching ([ADR 0009](adr/0009-one-reader-fans-out-to-many-viewers.md)).
+With nobody connected it does no work at all.
+
+A client that stops reading is disconnected after a send timeout rather than
+being allowed to stall the broadcast for everyone else. The display falls back
+to polling the REST endpoints if the socket cannot connect — which is the
+ordinary outcome behind a proxy that does not forward `Upgrade`.
 
 **Health and readiness are different on purpose.** `/health` must never check a
 dependency: a liveness probe that fails when the database hiccups gets the pod
@@ -223,14 +242,29 @@ python -m venv .venv
 .\scripts\run_checks.ps1
 ```
 
-`run_checks.ps1` runs exactly what CI runs: ruff, ruff format, mypy strict,
-pytest with an 80% coverage floor, and the contract schema drift gate.
+`run_checks.ps1` runs the **fast** gate: ruff, ruff format, mypy strict, pytest
+over unit and contract with an 80% coverage floor, and the contract drift gate.
+Everything needing Docker runs separately, as it does in CI:
 
-After changing a wire contract, regenerate the schemas or the build fails:
+```powershell
+pytest tests/integration      # real Kafka, Postgres, Redis   ~1 min
+pytest tests/e2e              # the whole stack under compose ~9 min
+pytest tests/perf -s          # latency budget at 500 aircraft ~10 s
+```
+
+After changing a wire contract **or an API route**, regenerate the committed
+artefacts or the build fails:
 
 ```powershell
 python scripts/contracts.py
 ```
+
+That writes the four Kafka JSON Schemas *and* `contracts/openapi.json`. The
+schemas are additionally checked for backward compatibility against the version
+in git: removing a field, making an optional field required, or changing a type
+fails the build, because each breaks a consumer that has not been redeployed.
+If the change is intended, it belongs on a new topic version with a dual-write
+window.
 
 Database schema changes need a migration:
 

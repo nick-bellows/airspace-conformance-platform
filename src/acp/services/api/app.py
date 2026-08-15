@@ -26,7 +26,15 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import Depends, FastAPI, HTTPException, Query, Request
+from fastapi import (
+    Depends,
+    FastAPI,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
@@ -34,6 +42,7 @@ from pydantic import BaseModel, Field
 from acp.common.config import Settings, load_settings
 from acp.common.contracts import Alert, AlertKind, TrackUpdate
 from acp.common.logging import configure_logging, get_logger
+from acp.services.api.stream import AirspaceBroadcaster, origin_is_allowed
 from acp.storage.stores import LiveAlertStore, LiveTrackStore, TrackHistoryStore
 
 _log = get_logger(__name__)
@@ -128,10 +137,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.live = LiveTrackStore.from_url(resolved.redis_url)
         app.state.alerts = LiveAlertStore.from_url(resolved.redis_url)
         app.state.history = TrackHistoryStore.from_dsn(resolved.postgres_dsn)
+        app.state.broadcaster = AirspaceBroadcaster(app.state.live, app.state.alerts)
+        await app.state.broadcaster.start()
         _log.info("api ready", extra={"port": resolved.api_port})
         try:
             yield
         finally:
+            await app.state.broadcaster.stop()
             await app.state.live.close()
             await app.state.alerts.close()
             await app.state.history.dispose()
@@ -154,7 +166,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         """Liveness. Deliberately checks nothing external."""
         return HealthResponse()
 
-    @app.get("/ready", response_model=ReadyResponse, tags=["operations"])
+    @app.get(
+        "/ready",
+        response_model=ReadyResponse,
+        tags=["operations"],
+        # Documented explicitly. 503 here is normal operation -- a dependency is
+        # down and this pod should leave the load balancer -- and a spec listing
+        # only 200 would lead a client author to treat it as an error.
+        responses={503: {"model": ReadyResponse, "description": "A dependency is unreachable"}},
+    )
     async def ready(
         live: Annotated[LiveTrackStore, Depends(get_live)],
         history: Annotated[TrackHistoryStore, Depends(get_history)],
@@ -184,19 +204,41 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/v1/alerts", response_model=AlertsResponse, tags=["airspace"])
     async def alerts(
         store: Annotated[LiveAlertStore, Depends(get_alerts)],
-        kind: Annotated[AlertKind | None, Query()] = None,
+        # No `| None`: that is what made the spec claim null was acceptable.
+        # FastAPI never mutates this default, so the usual mutable-default
+        # hazard does not apply.
+        kind: Annotated[list[AlertKind], Query()] = [],  # noqa: B006
     ) -> AlertsResponse:
         """Active advisories, most recently updated first.
+
+        Repeat `kind` to filter: `?kind=predicted_conflict&kind=emergency_squawk`.
+        Omit it entirely for everything.
+
+        A repeated parameter rather than a single nullable one. `AlertKind | None`
+        produced a spec claiming the parameter accepted null, which has no
+        meaningful representation in a query string and which the server then
+        rejected with a 422 -- an implementation that contradicted its own
+        contract. Schemathesis found it by sending `?kind=null`. Filtering by
+        several kinds at once is more useful anyway.
 
         These are advisory only. Nothing here is an instruction, and the system
         never proposes a resolution - see `docs/safety-notes.md`.
         """
         active = await store.active()
-        if kind is not None:
-            active = [a for a in active if a.kind is kind]
+        if kind:
+            wanted = set(kind)
+            active = [a for a in active if a.kind in wanted]
         return AlertsResponse(generated_at=datetime.now(UTC), count=len(active), alerts=active)
 
-    @app.get("/v1/tracks/{track_id}/history", response_model=HistoryResponse, tags=["airspace"])
+    @app.get(
+        "/v1/tracks/{track_id}/history",
+        response_model=HistoryResponse,
+        tags=["airspace"],
+        # An unknown track is a routine outcome, not an error condition, and a
+        # spec that omitted it left a client author to discover it in
+        # production. Found by fuzzing the implementation against this document.
+        responses={404: {"description": "No history for that track"}},
+    )
     async def history_for(
         track_id: str,
         history: Annotated[TrackHistoryStore, Depends(get_history)],
@@ -211,6 +253,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             count=len(rows),
             points=[TrackPoint.model_validate(row) for row in rows],
         )
+
+    @app.websocket("/v1/stream")
+    async def stream(websocket: WebSocket) -> None:
+        """Live airspace picture, pushed once a second.
+
+        Not documented in the OpenAPI schema because OpenAPI 3.1 has no way to
+        describe a WebSocket. The frame format is `StreamFrame` in
+        `acp.services.api.stream`, and it is the same tracks and alerts the REST
+        endpoints return.
+        """
+        settings: Settings = websocket.app.state.settings
+        if not origin_is_allowed(
+            websocket.headers.get("origin"),
+            websocket.headers.get("host"),
+            settings.allowed_websocket_origins,
+        ):
+            # 1008 is "policy violation". Refused before `accept()`, so no frame
+            # is ever sent to an origin we do not trust.
+            _log.warning(
+                "rejected websocket handshake from an untrusted origin",
+                extra={"origin": websocket.headers.get("origin")},
+            )
+            await websocket.close(code=1008)
+            return
+
+        broadcaster: AirspaceBroadcaster = websocket.app.state.broadcaster
+        client = await broadcaster.register(websocket)
+        try:
+            # The server pushes; the client never has to send anything. This
+            # read exists only to notice the socket closing.
+            while True:
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass
+        finally:
+            broadcaster.unregister(client)
 
     if STATIC_DIR.is_dir():
         app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

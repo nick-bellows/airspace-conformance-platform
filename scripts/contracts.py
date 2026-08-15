@@ -5,9 +5,16 @@ are committed rather than generated at runtime. CI runs this with ``--check``:
 if a model changes without the schema being regenerated, the build fails. That
 is the whole point — a producer cannot quietly alter the wire format.
 
+The HTTP surface is covered the same way. `contracts/openapi.json` is generated
+from the running application, and a route or response model that changes without
+it being regenerated fails the build. A spec that is allowed to drift is a spec
+nobody can generate a client from, and `tests/contract/test_openapi.py` fuzzes
+the implementation against this file — so a stale copy would mean testing
+against a document that no longer describes the service.
+
 Usage::
 
-    python scripts/contracts.py            # write contracts/*.schema.json
+    python scripts/contracts.py            # write contracts/
     python scripts/contracts.py --check    # fail if committed files are stale
 """
 
@@ -21,6 +28,7 @@ from pathlib import Path
 from acp.common.contracts import CONTRACTS_VERSION, TOPIC_MODELS
 
 CONTRACTS_DIR = Path(__file__).resolve().parents[1] / "contracts"
+OPENAPI_PATH = CONTRACTS_DIR / "openapi.json"
 
 
 def schema_path(topic: str) -> Path:
@@ -38,14 +46,29 @@ def render(topic: str) -> str:
     return json.dumps(schema, indent=2, sort_keys=True) + "\n"
 
 
+def render_openapi() -> str:
+    """Serialise the API's OpenAPI document deterministically.
+
+    Built from the application object rather than by starting a server, so this
+    works in a checkout with no Redis or Postgres available.
+    """
+    from acp.common.config import Settings
+    from acp.services.api.app import create_app
+
+    app = create_app(Settings(_env_file=None))  # type: ignore[call-arg]
+    return json.dumps(app.openapi(), indent=2, sort_keys=True) + "\n"
+
+
 def write_all() -> list[Path]:
-    """Write every schema to disk and return the paths written."""
+    """Write every contract artefact to disk and return the paths written."""
     CONTRACTS_DIR.mkdir(parents=True, exist_ok=True)
     written = []
     for topic in sorted(TOPIC_MODELS):
         path = schema_path(topic)
         path.write_text(render(topic), encoding="utf-8")
         written.append(path)
+    OPENAPI_PATH.write_text(render_openapi(), encoding="utf-8")
+    written.append(OPENAPI_PATH)
     return written
 
 
@@ -64,6 +87,11 @@ def check_all() -> list[str]:
     for orphan in sorted(p.name for p in CONTRACTS_DIR.glob("*.schema.json")):
         if orphan not in expected:
             problems.append(f"{orphan}: no matching model in TOPIC_MODELS")
+
+    if not OPENAPI_PATH.exists():
+        problems.append(f"{OPENAPI_PATH.name}: missing (run `python scripts/contracts.py`)")
+    elif OPENAPI_PATH.read_text(encoding="utf-8") != render_openapi():
+        problems.append(f"{OPENAPI_PATH.name}: stale (run `python scripts/contracts.py`)")
     return problems
 
 
@@ -78,7 +106,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"contract drift: {problem}", file=sys.stderr)
         if problems:
             return 1
-        print(f"contracts ok ({len(TOPIC_MODELS)} topics, {CONTRACTS_VERSION})")
+        print(f"contracts ok ({len(TOPIC_MODELS)} topics + openapi, {CONTRACTS_VERSION})")
         return 0
 
     for path in write_all():

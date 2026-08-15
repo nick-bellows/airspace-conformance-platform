@@ -7,12 +7,12 @@ Kafka turn noisy aircraft position reports into smoothed tracks and advisory
 safety alerts: predicted losses of separation, unmodelled maneuvers, and
 emergency transponder codes.
 
-> **Status: M3 — trajectory prediction.** All four services run. `docker compose
-> up` from a clean clone produces manoeuvring traffic on a live display, a Kalman
-> filter smoothing it, conflict alerts when two aircraft are predicted to lose
-> separation, and conformance advisories when an aircraft diverges from where a
-> trained model said it would be. Milestones below are checked only when their
-> evidence is committed.
+> **Status: M4 — real-time surface and the full test pyramid.** All four services
+> run. `docker compose up` from a clean clone produces manoeuvring traffic on a
+> live display streamed over a WebSocket, conflict alerts, and conformance
+> advisories. Tested at every level it claims to work at: contract, integration
+> against real infrastructure, end to end, and a latency budget. Milestones below
+> are checked only when their evidence is committed.
 
 > **Not an air traffic control system.** Advisory output only, synthetic data
 > only, no certification of any kind. Read [`docs/safety-notes.md`](docs/safety-notes.md)
@@ -57,6 +57,7 @@ alternatives and why they lost:
 | [0006](docs/adr/0006-constant-velocity-filter.md) | A constant-velocity Kalman filter, chosen *for* its weakness |
 | [0007](docs/adr/0007-residual-learning-over-direct-prediction.md) | The model learns the correction to physics, not the trajectory |
 | [0008](docs/adr/0008-no-generative-model-in-the-safety-path.md) | No generative model in the runtime path, and why |
+| [0009](docs/adr/0009-one-reader-fans-out-to-many-viewers.md) | One reader fans out to many viewers, so load tracks the airspace not the audience |
 
 ## Results
 
@@ -119,6 +120,31 @@ linear model would be defensible.
 All caveats are in [`docs/limitations.md`](docs/limitations.md). The short
 version: simulated aircraft hold heading and speed exactly, there is no wind, and
 real prediction error is substantially larger than anything reported here.
+
+### Throughput
+
+At **500 aircraft** reporting at 1 Hz, one full cycle — every report through the
+Kalman filter plus one conflict scan of the whole picture — takes a **median of
+204 ms and a p95 of 251 ms** against a 500 ms budget and a 1000 s report
+interval. Roughly four times the headroom needed to keep up with real time.
+[`docs/latency-budget.md`](docs/latency-budget.md) states what is measured
+(the compute path) and what is not (Kafka, Postgres, Redis — their latency
+belongs to the deployment).
+
+## Testing
+
+| Suite | What only it can catch | Where |
+| --- | --- | --- |
+| unit | Logic, invariants, architecture rules | fast gate |
+| contract | Spec drift, breaking schema changes, the API disobeying its own spec | fast gate |
+| integration | Partition assignment, consumer resume, idempotency against the real constraint | CI, Docker |
+| e2e | A broken compose file, a wrong env var, a service that cannot reach another | CI, Docker |
+| perf | Whether it keeps up at realistic load | CI, informational |
+
+The fast gate has **no coverage exclusions** and reports 81%. The two pure I/O
+adapters are measured separately by the integration job against their own floor,
+which is what turned an earlier promise ("these will be covered later") into
+something enforced.
 
 ## Repository map
 
@@ -242,7 +268,7 @@ exclusion is written down in `pyproject.toml` with instructions to delete it.
 - [x] **M1 — Walking skeleton.** Traffic flowing feed → Kafka → tracker → Postgres/Redis → API, with a live display; Alembic migrations; ADR 0004.
 - [x] **M2 — Detection.** Manoeuvring flight model, Kalman filter, separation monitor, alert lifecycle, scenario generator, and the conflict-detection evaluation report; ADRs 0005–0006.
 - [x] **M3 — Trajectory prediction.** Physics baselines, ridge and PyTorch residual models, stratified distribution-shift evaluation, conformance monitoring, model and data cards, operations manual; ADRs 0007–0008.
-- [ ] **M4 — Real-time surface and full test pyramid.** WebSocket streaming, integration and e2e tests, latency budget.
+- [x] **M4 — Real-time surface and full test pyramid.** WebSocket streaming, contract/compatibility/conformance tests, integration on real containers, end-to-end under compose, and a measured latency budget; ADR 0009.
 - [ ] **M5 — DevSecOps and operations.** Security scanning, SBOM, image publishing, tracing and metrics, Kubernetes with a `kind` smoke test in CI.
 - [ ] **M6 — Narrative.** Limitations, agile artefacts, interview brief, demo recording.
 

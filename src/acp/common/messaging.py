@@ -164,7 +164,16 @@ class MessageSubscriber[MessageT: BaseModel]:
 
         async for record in self._consumer:
             trace_id = _trace_id_from(record.headers)
-            token = trace_id_var.set(trace_id)
+            # Saved and restored **by value**, not with the token `set()`
+            # returns. A token may only be reset in the context that created it,
+            # and an async generator can resume -- or be closed -- in a
+            # different one. Breaking out of `async for` over this stream then
+            # raised `ValueError: Token was created in a different Context` from
+            # inside the `finally`, masking whatever the caller was actually
+            # doing. Found by an integration test that stops reading early;
+            # no unit test with a fake could have produced it.
+            previous = trace_id_var.get()
+            trace_id_var.set(trace_id)
             try:
                 message = self._model.model_validate_json(record.value)
             except ValidationError as error:
@@ -180,7 +189,7 @@ class MessageSubscriber[MessageT: BaseModel]:
                     },
                 )
                 await self._consumer.commit()
-                trace_id_var.reset(token)
+                trace_id_var.set(previous)
                 continue
 
             try:
@@ -194,7 +203,7 @@ class MessageSubscriber[MessageT: BaseModel]:
                 )
                 await self._consumer.commit()
             finally:
-                trace_id_var.reset(token)
+                trace_id_var.set(previous)
 
 
 def _trace_id_from(headers: Sequence[tuple[str, bytes]] | None) -> str:

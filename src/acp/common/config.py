@@ -31,6 +31,21 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"  # noqa: S104 - bound to localhost by compose/k8s, not here
     api_port: int = 8000
 
+    #: Extra browser origins permitted to open a WebSocket, comma-separated.
+    #:
+    #: Same-origin requests and non-browser clients (no `Origin` header at all)
+    #: are always allowed; this is for the case where the display is served from
+    #: a different host than the API.
+    #:
+    #: The check exists because **WebSockets do not respect CORS**. A browser
+    #: will happily open one to any origin and attach the user's cookies, which
+    #: is Cross-Site WebSocket Hijacking. It is not exploitable here today --
+    #: there is no authentication, so a hostile page learns nothing `curl` could
+    #: not already fetch -- but the mitigation belongs in place *before* auth
+    #: is added rather than after, because afterwards it is a vulnerability
+    #: rather than a gap.
+    allowed_websocket_origins: str = ""
+
     # Separation standards applied by the conflict detector. En-route defaults;
     # real airspace varies these by class, altitude, and surveillance type.
     horizontal_separation_nm: float = Field(default=5.0, gt=0.0)

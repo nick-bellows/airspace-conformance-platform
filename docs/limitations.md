@@ -194,8 +194,23 @@ From `eval/results/trajectory_prediction.md` and the
 - **Everything releases together.** The services are independently deployable
   but not independently versioned, so this does not exercise staged rollout of a
   contract change ([ADR 0003](adr/0003-shared-library-with-enforced-service-isolation.md)).
-- **Throughput and latency are unmeasured.** The scan interval and the pairwise
-  search are the obvious bottlenecks and neither has been profiled. That is M4.
+- **Throughput is measured for the compute path only.** 500 aircraft, cycle p95
+  251 ms against a 500 ms budget — see [`latency-budget.md`](latency-budget.md).
+  Kafka, Postgres, and Redis are excluded, and **no deployed system has been
+  measured**.
+- **The live stream is server-side polling with push**, not event-driven. Update
+  latency is bounded by the poll interval rather than by how quickly an alert is
+  produced ([ADR 0009](adr/0009-one-reader-fans-out-to-many-viewers.md)).
+- **The conformance service cannot be scaled out.** Every instance would hold the
+  whole airspace picture and duplicate every alert. The tracker shards by
+  partition; this does not, and sector-partitioning it is real work that is not
+  done.
+- **Consumer-group rebalance is tested for assignment, not for behaviour.** Two
+  consumers are shown to divide partitions; a consumer *joining mid-stream* with
+  messages in flight is the harder case and is untested.
+- **The perf job is `continue-on-error` in CI.** A budget that fails the build on
+  a noisy shared runner teaches people to ignore the job, so it reports rather
+  than blocks — which does mean a genuine regression could land unblocked.
 
 ---
 
@@ -213,7 +228,11 @@ From `eval/results/trajectory_prediction.md` and the
 | Services do not import each other | `tests/unit/test_architecture.py` | Static import graph; says nothing about runtime coupling |
 | Idempotent writes under redelivery | `tests/unit/test_runners.py`, live database check | Not yet tested against real consumer restarts (M5) |
 | Committed reports match their inputs | `tests/unit/test_generator.py` fingerprint | Covers NOMINAL only |
-| End-to-end pipeline works | Manual verification, screenshots | Not yet automated (M4) |
+| The API obeys its own OpenAPI spec | `tests/contract/test_openapi.py` (schemathesis) | Fake stores; HTTP layer only |
+| Schema changes stay backward compatible | `tests/contract/test_compatibility.py` | Diffs against HEAD, not a release tag |
+| Partition assignment, consumer resume, idempotency | `tests/integration/` on real containers | Same image versions as compose |
+| End-to-end pipeline works | `tests/e2e/` under docker compose | Single-node, one scenario |
+| Throughput at 500 aircraft | `tests/perf/`, `latency-budget.md` | Compute path only; no transport |
 
 No metric appears in the README until its runner is committed and reproducible
 from a recorded seed.

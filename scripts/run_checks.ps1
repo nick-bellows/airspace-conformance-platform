@@ -28,13 +28,19 @@ Write-Host "`n[3/5] mypy --strict" -ForegroundColor Cyan
 & $python -m mypy src
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-# Integration and e2e need Docker, so the default gate stays fast and offline.
+# Integration, e2e, and perf need Docker and minutes, so the default gate stays
+# fast and offline. CI runs them as separate jobs; see the footer below.
 Write-Host "`n[4/5] pytest (unit + contract)" -ForegroundColor Cyan
 & $python -m pytest tests/unit tests/contract --cov=acp --cov-report=term-missing
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-Write-Host "`n[5/5] contract schema drift" -ForegroundColor Cyan
+Write-Host "`n[5/5] contract drift (Kafka schemas + OpenAPI)" -ForegroundColor Cyan
 & $python scripts/contracts.py --check
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "`nAll checks passed." -ForegroundColor Green
+Write-Host ""
+Write-Host "Not run here (Docker, minutes each - CI runs them as separate jobs):" -ForegroundColor DarkGray
+Write-Host "  pytest tests/integration   real Kafka, Postgres, Redis via testcontainers" -ForegroundColor DarkGray
+Write-Host "  pytest tests/e2e           the whole stack under docker compose" -ForegroundColor DarkGray
+Write-Host "  pytest tests/perf -s       the latency budget at 500 aircraft" -ForegroundColor DarkGray

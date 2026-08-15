@@ -115,6 +115,63 @@ jobs:
           print("degrades to physics:", p.version)
           PY
 
+  integration:
+    name: integration (real Kafka, Postgres, Redis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[all]" --extra-index-url https://download.pytorch.org/whl/cpu
+      # Testcontainers starts the same image versions deploy/compose.yml runs,
+      # so a pass here says something about the stack that actually ships.
+      #
+      # Coverage over the two pure I/O adapters, with their own floor. The fast
+      # gate used to exclude them on the promise that an integration suite would
+      # cover them instead; that promise is now kept, the exclusion is gone from
+      # pyproject.toml entirely, and this is what stops the adapters quietly
+      # rotting behind a passing unit suite.
+      - run: >-
+          pytest tests/integration -v
+          --cov=acp.common.messaging --cov=acp.storage.stores
+          --cov-report=term-missing --cov-fail-under=75
+
+  e2e:
+    name: end to end (docker compose)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[all]" --extra-index-url https://download.pytorch.org/whl/cpu
+      # Brings the whole stack up and drives a scripted conflict through it.
+      # The only test that would catch a broken compose file, a wrong
+      # environment variable, or a service that cannot reach another.
+      - run: pytest tests/e2e -v
+      - name: service logs on failure
+        if: failure()
+        run: docker compose -f deploy/compose.yml logs --tail 200
+
+  perf:
+    name: latency budget
+    runs-on: ubuntu-latest
+    # Informational. A perf budget that fails the build on a noisy shared
+    # runner teaches people to ignore the job; the numbers are still printed
+    # and docs/latency-budget.md records what the budget means.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[all]" --extra-index-url https://download.pytorch.org/whl/cpu
+      - run: pytest tests/perf -v -s
+
   compose:
     name: compose config + image build
     runs-on: ubuntu-latest
@@ -122,6 +179,6 @@ jobs:
       - uses: actions/checkout@v4
       # Syntax and reference check on the dev stack.
       - run: docker compose -f deploy/compose.yml config --quiet
-      # Proves the image still builds. Bringing the stack up and driving traffic
-      # through it is the e2e job at M4; this is the cheap half of that.
+      # Cheap early signal: the e2e job builds the same image, but this fails in
+      # a minute rather than after the stack has been brought up.
       - run: docker build --tag acp:ci .

@@ -54,8 +54,16 @@ dev = [
     # Required by fastapi.testclient; not a runtime dependency of any service.
     "httpx>=0.27,<1",
 ]
+# Tests that need real infrastructure. Kept out of `dev` so the fast unit gate
+# does not pull a Docker client library it never uses.
+integration = [
+    "testcontainers[postgres,redis]>=4.8,<5",
+    "schemathesis>=3.38,<5",
+    # The e2e suite connects to the WebSocket endpoint directly.
+    "websockets>=13,<16",
+]
 all = [
-    "airspace-conformance-platform[messaging,storage,api,ml,dev]",
+    "airspace-conformance-platform[messaging,storage,api,ml,dev,integration]",
 ]
 
 [project.scripts]
@@ -109,20 +117,6 @@ markers = [
 [tool.coverage.run]
 source = ["acp"]
 branch = true
-# Pure I/O adapters. Every branch in these modules is a call into Kafka,
-# Postgres, or Redis, and a unit test could only assert that a mock was called
-# the way the mock was configured -- which proves nothing about whether the real
-# client behaves that way. They are covered by the integration suite running
-# against real containers, which arrives at M5.
-#
-# This is an exclusion from the *measurement*, not from testing, and it is
-# deliberately narrow: two files, both adapters, both named. Anything with
-# branching logic of its own stays measured. Delete these lines when the
-# integration suite lands.
-omit = [
-    "*/acp/common/messaging.py",
-    "*/acp/storage/stores.py",
-]
 
 [tool.coverage.report]
 fail_under = 80
