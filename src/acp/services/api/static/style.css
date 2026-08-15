@@ -13,6 +13,12 @@
   --track-stale: #d9a441;
   --accent: #4aa8ff;
   --rule: #1b2a35;
+  /* Severity ramp. Deliberately not red-to-green: red/green is the single most
+     common form of colour blindness, so severity is carried by position in the
+     list and by a text label as well as by hue. */
+  --sev-advisory: #4aa8ff;
+  --sev-caution: #e0a33a;
+  --sev-warning: #ff6b5e;
   --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
 }
 
@@ -108,6 +114,95 @@ aside h2 {
   text-transform: uppercase;
   color: var(--ink-dim);
   margin: 0 0 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+aside section + section {
+  margin-top: 1.5rem;
+}
+
+.badge {
+  background: var(--rule);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 0 0.45rem;
+  font-size: 0.7rem;
+  letter-spacing: 0;
+}
+
+.badge[data-active="true"] {
+  background: var(--sev-warning);
+  color: #12060a;
+}
+
+#alert-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#alert-list li {
+  border-left: 3px solid var(--sev-advisory);
+  padding: 0.4rem 0 0.45rem 0.6rem;
+  margin-bottom: 0.5rem;
+  background: #0d1620;
+}
+
+#alert-list li[data-severity="caution"] {
+  border-left-color: var(--sev-caution);
+}
+
+#alert-list li[data-severity="warning"] {
+  border-left-color: var(--sev-warning);
+}
+
+.alert-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: baseline;
+}
+
+.alert-severity {
+  font-size: 0.65rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sev-advisory);
+}
+
+li[data-severity="caution"] .alert-severity {
+  color: var(--sev-caution);
+}
+
+li[data-severity="warning"] .alert-severity {
+  color: var(--sev-warning);
+}
+
+.alert-age {
+  color: var(--ink-dim);
+  font-size: 0.7rem;
+}
+
+.alert-summary {
+  display: block;
+  margin-top: 0.2rem;
+  line-height: 1.45;
+}
+
+.alert-reasons {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--ink-dim);
+  font-size: 0.68rem;
+  word-break: break-word;
+}
+
+.empty {
+  color: var(--ink-dim);
+  font-size: 0.75rem;
+  margin: 0;
 }
 
 #track-list {

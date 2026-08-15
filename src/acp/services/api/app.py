@@ -32,9 +32,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from acp.common.config import Settings, load_settings
-from acp.common.contracts import TrackUpdate
+from acp.common.contracts import Alert, AlertKind, TrackUpdate
 from acp.common.logging import configure_logging, get_logger
-from acp.storage.stores import LiveTrackStore, TrackHistoryStore
+from acp.storage.stores import LiveAlertStore, LiveTrackStore, TrackHistoryStore
 
 _log = get_logger(__name__)
 STATIC_DIR = Path(__file__).parent / "static"
@@ -91,6 +91,18 @@ class HistoryResponse(BaseModel):
     points: list[TrackPoint]
 
 
+class AlertsResponse(BaseModel):
+    """Everything the system currently considers wrong.
+
+    Cleared alerts are absent rather than flagged: the contract is "what is
+    wrong now", so a consumer cannot forget to filter them out.
+    """
+
+    generated_at: datetime
+    count: int
+    alerts: list[Alert]
+
+
 def get_live(request: Request) -> LiveTrackStore:
     store: LiveTrackStore = request.app.state.live
     return store
@@ -98,6 +110,11 @@ def get_live(request: Request) -> LiveTrackStore:
 
 def get_history(request: Request) -> TrackHistoryStore:
     store: TrackHistoryStore = request.app.state.history
+    return store
+
+
+def get_alerts(request: Request) -> LiveAlertStore:
+    store: LiveAlertStore = request.app.state.alerts
     return store
 
 
@@ -109,12 +126,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         app.state.settings = resolved
         app.state.live = LiveTrackStore.from_url(resolved.redis_url)
+        app.state.alerts = LiveAlertStore.from_url(resolved.redis_url)
         app.state.history = TrackHistoryStore.from_dsn(resolved.postgres_dsn)
         _log.info("api ready", extra={"port": resolved.api_port})
         try:
             yield
         finally:
             await app.state.live.close()
+            await app.state.alerts.close()
             await app.state.history.dispose()
 
     app = FastAPI(
@@ -161,6 +180,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return TracksResponse(
             generated_at=now, live_window_s=window_s, count=len(updates), tracks=updates
         )
+
+    @app.get("/v1/alerts", response_model=AlertsResponse, tags=["airspace"])
+    async def alerts(
+        store: Annotated[LiveAlertStore, Depends(get_alerts)],
+        kind: Annotated[AlertKind | None, Query()] = None,
+    ) -> AlertsResponse:
+        """Active advisories, most recently updated first.
+
+        These are advisory only. Nothing here is an instruction, and the system
+        never proposes a resolution - see `docs/safety-notes.md`.
+        """
+        active = await store.active()
+        if kind is not None:
+            active = [a for a in active if a.kind is kind]
+        return AlertsResponse(generated_at=datetime.now(UTC), count=len(active), alerts=active)
 
     @app.get("/v1/tracks/{track_id}/history", response_model=HistoryResponse, tags=["airspace"])
     async def history_for(

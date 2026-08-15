@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from acp.services.conformance.__main__ import build_parser as conformance_parser
 from acp.services.feed.__main__ import build_parser as feed_parser
 from acp.services.track.__main__ import build_parser as track_parser
 
@@ -49,7 +50,18 @@ def test_the_tracker_group_can_be_overridden() -> None:
     assert track_parser().parse_args(["--group-id=replay"]).group_id == "replay"
 
 
-@pytest.mark.parametrize("parser", [feed_parser(), track_parser()])
+def test_the_conformance_service_defaults_are_the_deployed_ones() -> None:
+    args = conformance_parser().parse_args([])
+    assert args.group_id == "conformance-service"
+    assert args.scan_interval_s == 1.0
+
+
+def test_the_scan_interval_can_be_tuned() -> None:
+    """The real latency knob: detection promptness against CPU."""
+    assert conformance_parser().parse_args(["--scan-interval-s=0.25"]).scan_interval_s == 0.25
+
+
+@pytest.mark.parametrize("parser", [feed_parser(), track_parser(), conformance_parser()])
 def test_unknown_flags_are_rejected(parser: object) -> None:
     with pytest.raises(SystemExit):
         parser.parse_args(["--not-a-real-flag"])  # type: ignore[attr-defined]

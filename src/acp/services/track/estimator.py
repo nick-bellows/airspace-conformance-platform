@@ -1,28 +1,31 @@
 """Turn surveillance reports into track state estimates.
 
-**M1 scope, stated plainly: this does not filter.** It carries reported values
-through, fills gaps from the last known value, and derives turn rate from
-consecutive reported headings. The noise that goes in comes straight back out.
+Two responsibilities, deliberately separable:
 
-What it *does* implement is the part that is independent of the filter: track
-lifecycle. A track initiates, gets confirmed once it has been seen enough times
-to not be a one-off, coasts when reports stop arriving, and terminates when they
-stop for long enough. That machinery is what M2's Kalman filter plugs into --
-:meth:`TrackEstimator.on_report` keeps its signature and only the arithmetic
-inside changes.
+**Filtering** is delegated to :class:`~acp.services.track.kalman.TrackFilter`,
+one per track. Reported position and velocity are noisy; the filter produces a
+smoothed estimate and, more usefully, a *covariance* -- so the uncertainty this
+publishes is now computed rather than assumed, and it grows on its own while a
+track coasts through a dropout.
 
-The uncertainty this reports is therefore a **placeholder constant**, not a
-computed quantity. It is labelled as such everywhere it appears so no reader
-mistakes it for a real covariance.
+**Lifecycle** lives here. A track initiates, gets confirmed once it has been
+seen enough times not to be a one-off, coasts when reports stop arriving, and
+terminates when they stop for long enough. None of that depends on how the
+filtering is done, which is why it survived the M1-to-M2 change untouched.
+
+The filter also yields the *innovation* -- how far the aircraft was from where
+constant-velocity physics said it would be. That number is passed through to the
+conformance service, where it becomes the manoeuvre signal.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 
 from acp.common.contracts import DataSource, SurveillanceReport, TrackState, TrackUpdate
-from acp.common.geodesy import bearing_difference_deg, haversine_nm, initial_bearing_deg
+from acp.common.geodesy import bearing_difference_deg
+from acp.services.track.kalman import FilterTuning, TrackFilter, reference_for
 
 #: Reports needed before a track is trusted enough to be CONFIRMED. A single
 #: report could be a spurious detection; three consistent ones is a track.
@@ -34,16 +37,6 @@ COAST_AFTER_S = 5.0
 #: No report for this long and the aircraft is considered gone.
 TERMINATE_AFTER_S = 30.0
 
-#: Placeholder position uncertainty, in metres. M1 does not estimate covariance,
-#: so this is the sensor's nominal sigma rather than anything derived from the
-#: data. M2 replaces it with the square root of the filter's position covariance
-#: trace, at which point it becomes meaningful and starts varying per track.
-PLACEHOLDER_UNCERTAINTY_M = 30.0
-
-#: Growth applied to the placeholder for each second of coasting, so a stale
-#: track at least *looks* less trustworthy on the display.
-COASTING_UNCERTAINTY_GROWTH_M_PER_S = 15.0
-
 
 @dataclass(slots=True)
 class TrackRecord:
@@ -54,6 +47,7 @@ class TrackRecord:
     callsign: str | None
     first_seen_at: datetime
     last_report_at: datetime
+    filter: TrackFilter
     lat: float
     lon: float
     altitude_ft: float
@@ -61,12 +55,13 @@ class TrackRecord:
     track_deg: float
     vertical_rate_fpm: float
     turn_rate_deg_s: float
+    position_uncertainty_m: float
+    innovation_nm: float
     squawk: str | None
     scenario_id: str | None
     update_count: int = 0
     state: TrackState = TrackState.INITIATING
     terminated: bool = False
-    _history: list[tuple[datetime, float, float]] = field(default_factory=list)
 
 
 def track_id_for(icao24: str) -> str:
@@ -94,11 +89,13 @@ class TrackEstimator:
         coast_after_s: float = COAST_AFTER_S,
         terminate_after_s: float = TERMINATE_AFTER_S,
         confirmation_updates: int = CONFIRMATION_UPDATES,
+        tuning: FilterTuning | None = None,
     ) -> None:
         self._tracks: dict[str, TrackRecord] = {}
         self._coast_after_s = coast_after_s
         self._terminate_after_s = terminate_after_s
         self._confirmation_updates = confirmation_updates
+        self._tuning = tuning or FilterTuning()
 
     @property
     def live_track_count(self) -> int:
@@ -139,19 +136,35 @@ class TrackEstimator:
         return tuple(changed)
 
     def _initiate(self, report: SurveillanceReport) -> TrackRecord:
-        return TrackRecord(
-            track_id=track_id_for(report.icao24),
-            icao24=report.icao24,
-            callsign=report.callsign,
-            first_seen_at=report.observed_at,
-            last_report_at=report.observed_at,
+        ref_lat, ref_lon = reference_for(report.lat, report.lon)
+        track_filter = TrackFilter(
+            ref_lat=ref_lat,
+            ref_lon=ref_lon,
             lat=report.lat,
             lon=report.lon,
             altitude_ft=report.altitude_baro_ft or 0.0,
             ground_speed_kt=report.ground_speed_kt or 0.0,
             track_deg=report.track_deg or 0.0,
             vertical_rate_fpm=report.vertical_rate_fpm or 0.0,
+            tuning=self._tuning,
+        )
+        estimate = track_filter.estimate()
+        return TrackRecord(
+            track_id=track_id_for(report.icao24),
+            icao24=report.icao24,
+            callsign=report.callsign,
+            first_seen_at=report.observed_at,
+            last_report_at=report.observed_at,
+            filter=track_filter,
+            lat=estimate.lat,
+            lon=estimate.lon,
+            altitude_ft=estimate.altitude_ft,
+            ground_speed_kt=estimate.ground_speed_kt,
+            track_deg=estimate.track_deg,
+            vertical_rate_fpm=estimate.vertical_rate_fpm,
             turn_rate_deg_s=0.0,
+            position_uncertainty_m=estimate.position_uncertainty_m,
+            innovation_nm=0.0,
             squawk=report.squawk,
             scenario_id=report.scenario_id,
             update_count=1,
@@ -162,36 +175,37 @@ class TrackEstimator:
         dt_s = (report.observed_at - record.last_report_at).total_seconds()
 
         # A report older than the one already folded in is out of order. With
-        # per-aircraft partitioning this should not happen, so it is logged by
-        # the caller's metrics rather than silently accepted -- accepting it
-        # would drag the track backwards.
+        # per-aircraft partitioning this should not happen, and accepting it
+        # would drag the track backwards, so it is dropped.
         if dt_s <= 0.0:
             return record
 
-        track_deg = (
-            report.track_deg if report.track_deg is not None else _derive_track(record, report)
+        previous_track_deg = record.track_deg
+        record.filter.update(
+            dt_s=dt_s,
+            lat=report.lat,
+            lon=report.lon,
+            altitude_ft=report.altitude_baro_ft,
+            ground_speed_kt=report.ground_speed_kt,
+            track_deg=report.track_deg,
+            vertical_rate_fpm=report.vertical_rate_fpm,
         )
-        speed_kt = (
-            report.ground_speed_kt
-            if report.ground_speed_kt is not None
-            else _derive_speed_kt(record, report, dt_s)
-        )
+        estimate = record.filter.estimate()
 
-        # Signed shortest turn, so crossing north does not register as a 359
-        # degree per second turn.
-        record.turn_rate_deg_s = bearing_difference_deg(record.track_deg, track_deg) / dt_s
-        record.lat = report.lat
-        record.lon = report.lon
-        record.altitude_ft = (
-            report.altitude_baro_ft if report.altitude_baro_ft is not None else record.altitude_ft
+        # Turn rate comes from the *filtered* headings, not the reported ones.
+        # Reported heading carries half a degree of noise, which at 1 Hz reads
+        # as a half-degree-per-second turn on a perfectly straight aircraft.
+        record.turn_rate_deg_s = (
+            bearing_difference_deg(previous_track_deg, estimate.track_deg) / dt_s
         )
-        record.ground_speed_kt = speed_kt
-        record.track_deg = track_deg
-        record.vertical_rate_fpm = (
-            report.vertical_rate_fpm
-            if report.vertical_rate_fpm is not None
-            else record.vertical_rate_fpm
-        )
+        record.lat = estimate.lat
+        record.lon = estimate.lon
+        record.altitude_ft = estimate.altitude_ft
+        record.ground_speed_kt = estimate.ground_speed_kt
+        record.track_deg = estimate.track_deg
+        record.vertical_rate_fpm = estimate.vertical_rate_fpm
+        record.position_uncertainty_m = estimate.position_uncertainty_m
+        record.innovation_nm = estimate.innovation_nm
         record.squawk = report.squawk or record.squawk
         record.callsign = report.callsign or record.callsign
         record.last_report_at = report.observed_at
@@ -205,7 +219,18 @@ class TrackEstimator:
 
     def _to_update(self, record: TrackRecord, *, at: datetime) -> TrackUpdate:
         staleness_s = max(0.0, (at - record.last_report_at).total_seconds())
-        uncertainty = PLACEHOLDER_UNCERTAINTY_M + staleness_s * COASTING_UNCERTAINTY_GROWTH_M_PER_S
+        if staleness_s > 0.0:
+            # Coasting: run the filter forward on prediction alone. The
+            # covariance grows because process noise accumulates with no
+            # measurement to check it, so the reported uncertainty rises by
+            # itself -- no ad-hoc growth constant needed.
+            record.filter.predict(staleness_s)
+            estimate = record.filter.estimate()
+            record.lat = estimate.lat
+            record.lon = estimate.lon
+            record.altitude_ft = estimate.altitude_ft
+            record.position_uncertainty_m = estimate.position_uncertainty_m
+
         return TrackUpdate(
             track_id=record.track_id,
             icao24=record.icao24,
@@ -220,8 +245,9 @@ class TrackEstimator:
             track_deg=record.track_deg % 360.0,
             vertical_rate_fpm=record.vertical_rate_fpm,
             turn_rate_deg_s=record.turn_rate_deg_s,
-            position_uncertainty_m=uncertainty,
+            position_uncertainty_m=record.position_uncertainty_m,
             update_count=record.update_count,
+            innovation_nm=record.innovation_nm,
             squawk=record.squawk,
             source=DataSource.SIMULATOR,
             scenario_id=record.scenario_id,
@@ -239,20 +265,12 @@ class TrackEstimator:
             del self._tracks[icao24]
         return len(stale)
 
+    def innovation_for(self, icao24: str) -> float:
+        """Latest innovation for a track, in nautical miles.
 
-def _derive_track(record: TrackRecord, report: SurveillanceReport) -> float:
-    """Bearing from the previous position to this one.
-
-    Only used when the report omits heading. Position-derived heading is noisy
-    at 1 Hz -- 30 m of position error over roughly 230 m of travel is several
-    degrees -- so the reported value is always preferred when present.
-    """
-    if (record.lat, record.lon) == (report.lat, report.lon):
-        return record.track_deg
-    return initial_bearing_deg(record.lat, record.lon, report.lat, report.lon)
-
-
-def _derive_speed_kt(record: TrackRecord, report: SurveillanceReport, dt_s: float) -> float:
-    """Ground speed from distance covered. Same noise caveat as `_derive_track`."""
-    distance_nm = haversine_nm(record.lat, record.lon, report.lat, report.lon)
-    return distance_nm / dt_s * 3600.0
+        Exposed for tests and for the tracking-accuracy evaluation. The value
+        also travels downstream inside the track update, where the conformance
+        monitor uses it as the manoeuvre signal.
+        """
+        record = self._tracks.get(icao24)
+        return record.innovation_nm if record else 0.0

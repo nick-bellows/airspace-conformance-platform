@@ -15,6 +15,9 @@ dependencies = [
     "pydantic-settings>=2.5,<3",
     # Scenarios are hand-authored and commented, which rules out JSON.
     "pyyaml>=6.0,<7",
+    # The Kalman filter is 6x6 linear algebra per aircraft per second. Hand-rolled
+    # matrix code at that size is a correctness risk for no gain.
+    "numpy>=1.26,<3",
 ]
 
 [project.optional-dependencies]

@@ -16,12 +16,17 @@ const FIT_SMOOTHING = 0.12; // 0 = frozen view, 1 = snap instantly
 const canvas = document.getElementById("scope");
 const ctx = canvas.getContext("2d");
 const listEl = document.getElementById("track-list");
+const alertListEl = document.getElementById("alert-list");
+const alertEmptyEl = document.getElementById("alert-empty");
+const alertCountEl = document.getElementById("alert-count");
 const pillEl = document.getElementById("pill-link");
 const tracksEl = document.getElementById("stat-tracks");
 const updatedEl = document.getElementById("stat-updated");
 
 /** @type {Map<string, {track: object, trail: Array<{lat:number, lon:number}>}>} */
 const state = new Map();
+/** Track ids currently named by an alert, for highlighting on the scope. */
+let alertedTracks = new Set();
 let view = null; // {lat, lon, nmPerPixel}
 
 // ---------------------------------------------------------------------------
@@ -107,6 +112,7 @@ function styles() {
     inkDim: css.getPropertyValue("--ink-dim").trim(),
     track: css.getPropertyValue("--track").trim(),
     stale: css.getPropertyValue("--track-stale").trim(),
+    alerted: css.getPropertyValue("--sev-warning").trim(),
   };
 }
 
@@ -157,7 +163,25 @@ function drawTrail(entry, theme) {
 
 function drawTrack(track, theme) {
   const { x, y } = project(track.lat, track.lon);
-  const colour = track.state === "coasting" ? theme.stale : theme.track;
+  const alerted = alertedTracks.has(track.track_id);
+  const colour = alerted
+    ? theme.alerted
+    : track.state === "coasting"
+      ? theme.stale
+      : theme.track;
+
+  // A ring around any aircraft named in an active alert. Position on the scope
+  // is what an operator looks at; making them hunt the side panel for which
+  // two aircraft the alert is about defeats the point of having a scope.
+  if (alerted) {
+    ctx.strokeStyle = theme.alerted;
+    ctx.globalAlpha = 0.8;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x, y, 13, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
 
   // Chevron pointing along the aircraft's track. Bearings are clockwise from
   // north; canvas rotation is clockwise from the +x axis, hence the -90.
@@ -265,6 +289,52 @@ function ingest(payload) {
   render();
 }
 
+const SEVERITY_ORDER = { warning: 0, caution: 1, advisory: 2, info: 3 };
+
+function updateAlerts(payload) {
+  const alerts = [...payload.alerts].sort(
+    (a, b) => (SEVERITY_ORDER[a.severity] ?? 9) - (SEVERITY_ORDER[b.severity] ?? 9),
+  );
+
+  alertedTracks = new Set(alerts.flatMap((a) => a.track_ids));
+  alertCountEl.textContent = String(alerts.length);
+  alertCountEl.dataset.active = alerts.length > 0 ? "true" : "false";
+  alertEmptyEl.hidden = alerts.length > 0;
+
+  const now = Date.parse(payload.generated_at);
+  alertListEl.replaceChildren(
+    ...alerts.map((alert) => {
+      const li = document.createElement("li");
+      li.dataset.severity = alert.severity;
+
+      const head = document.createElement("div");
+      head.className = "alert-head";
+
+      const severity = document.createElement("span");
+      severity.className = "alert-severity";
+      severity.textContent = alert.severity;
+
+      const age = document.createElement("span");
+      age.className = "alert-age";
+      const seconds = Math.max(0, Math.round((now - Date.parse(alert.raised_at)) / 1000));
+      age.textContent = `${seconds}s`;
+
+      head.append(severity, age);
+
+      const summary = document.createElement("span");
+      summary.className = "alert-summary";
+      summary.textContent = alert.summary;
+
+      const reasons = document.createElement("span");
+      reasons.className = "alert-reasons";
+      reasons.textContent = alert.reason_codes.join(" · ");
+
+      li.append(head, summary, reasons);
+      return li;
+    }),
+  );
+}
+
 function setLink(stateName, label) {
   pillEl.dataset.state = stateName;
   pillEl.textContent = label;
@@ -272,9 +342,19 @@ function setLink(stateName, label) {
 
 async function poll() {
   try {
-    const response = await fetch("/v1/tracks");
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    ingest(await response.json());
+    // One failure blanks neither view: the two requests are independent, and a
+    // conformance service that is down must not take the traffic picture with
+    // it. Alerts degrade to "none shown" while tracks keep updating.
+    const [tracksResponse, alertsResponse] = await Promise.all([
+      fetch("/v1/tracks"),
+      fetch("/v1/alerts"),
+    ]);
+    if (!tracksResponse.ok) throw new Error(`tracks HTTP ${tracksResponse.status}`);
+
+    if (alertsResponse.ok) {
+      updateAlerts(await alertsResponse.json());
+    }
+    ingest(await tracksResponse.json());
     setLink("live", "live");
   } catch (error) {
     // Keep the last picture on screen but say so, rather than blanking the

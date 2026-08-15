@@ -23,11 +23,21 @@
     <main>
       <canvas id="scope"></canvas>
       <aside id="panel">
-        <h2>Tracks</h2>
-        <ul id="track-list"></ul>
+        <section>
+          <h2>Alerts <span id="alert-count" class="badge">0</span></h2>
+          <ul id="alert-list"></ul>
+          <p id="alert-empty" class="empty">No active advisories.</p>
+        </section>
+
+        <section>
+          <h2>Tracks</h2>
+          <ul id="track-list"></ul>
+        </section>
+
         <p class="note">
           Synthetic traffic. Advisory display only &mdash; not an air traffic
-          control system.
+          control system. Alerts report predicted geometry and never propose a
+          resolution.
         </p>
       </aside>
     </main>

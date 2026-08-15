@@ -50,6 +50,19 @@
       "title": "Icao24",
       "type": "string"
     },
+    "innovation_nm": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Innovation Nm"
+    },
     "last_report_at": {
       "format": "date-time",
       "title": "Last Report At",

@@ -28,7 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
-from acp.common.contracts import TrackUpdate
+from acp.common.contracts import Alert, AlertState, TrackUpdate
 from acp.storage.schema import track_points_table, tracks_table
 
 
@@ -221,3 +221,77 @@ class LiveTrackStore:
         if expired:
             await self.forget(expired)
         return updates
+
+
+class LiveAlertStore:
+    """Redis-backed set of currently active alerts.
+
+    Same shape as :class:`LiveTrackStore` and for the same reason: the API must
+    be able to render the alert list without consuming Kafka or querying the
+    conformance service.
+
+    The important difference is what happens on CLEARED. A cleared alert is
+    **deleted**, not stored with a flag, because the endpoint's contract is
+    "what is wrong right now". Keeping cleared alerts around would mean every
+    consumer had to remember to filter them, and the first one that forgot would
+    show a resolved conflict as live.
+    """
+
+    KEY_PREFIX = "acp:alert:"
+    INDEX_KEY = "acp:alerts:active"
+
+    def __init__(self, client: redis.Redis, *, ttl_s: int = 300) -> None:
+        self._client = client
+        self._ttl_s = ttl_s
+
+    @classmethod
+    def from_url(cls, url: str, *, ttl_s: int = 300) -> LiveAlertStore:
+        client: redis.Redis = redis.from_url(url, decode_responses=True)  # type: ignore[no-untyped-call]
+        return cls(client, ttl_s=ttl_s)
+
+    async def close(self) -> None:
+        await self._client.aclose()
+
+    async def ping(self) -> bool:
+        try:
+            return bool(await self._client.ping())
+        except Exception:  # noqa: BLE001 - readiness must never propagate
+            return False
+
+    async def apply(self, alerts: Sequence[Alert]) -> None:
+        """Fold a batch of alert state changes into the active set."""
+        if not alerts:
+            return
+        async with self._client.pipeline(transaction=False) as pipe:
+            for alert in alerts:
+                key = f"{self.KEY_PREFIX}{alert.alert_key}"
+                if alert.state is AlertState.CLEARED:
+                    pipe.delete(key)
+                    pipe.zrem(self.INDEX_KEY, alert.alert_key)
+                else:
+                    # A TTL as well as explicit deletion: if the conformance
+                    # service dies mid-conflict, the alert expires rather than
+                    # sitting on the display forever with nothing maintaining it.
+                    pipe.set(key, alert.model_dump_json(), ex=self._ttl_s)
+                    pipe.zadd(self.INDEX_KEY, {alert.alert_key: alert.updated_at.timestamp()})
+            await pipe.execute()
+
+    async def active(self) -> list[Alert]:
+        """Every alert currently believed to be live, most recent first."""
+        keys = await self._client.zrevrange(self.INDEX_KEY, 0, -1)
+        if not keys:
+            return []
+        payloads = await self._client.mget([f"{self.KEY_PREFIX}{k}" for k in keys])
+        alerts = []
+        expired = []
+        for key, payload in zip(keys, payloads, strict=True):
+            if payload is None:
+                expired.append(key)
+                continue
+            alerts.append(Alert.model_validate(json.loads(payload)))
+        if expired:
+            async with self._client.pipeline(transaction=False) as pipe:
+                for key in expired:
+                    pipe.zrem(self.INDEX_KEY, key)
+                await pipe.execute()
+        return alerts

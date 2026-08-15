@@ -8,9 +8,11 @@ sensor layer saw: noisy, sometimes missing entirely. Only `observe()` output
 ever reaches the pipeline. The evaluation harness reads `truth()` on a separate
 topic that no production code path consumes.
 
-M1 propagates constant velocity only. M2 replaces `_advance_aircraft` with a
-flight model that flies waypoints, climbs, turns, and holds; nothing outside
-that function should need to change.
+The flight model is *kinematic*, not aerodynamic: aircraft turn, climb, and
+accelerate at commanded rates, and nothing checks whether the resulting
+manoeuvre is within an airframe's performance envelope. That is a deliberate
+limitation -- the point is to produce plausible tracks to detect conflicts in,
+not to model flight.
 """
 
 from __future__ import annotations
@@ -23,19 +25,35 @@ from datetime import datetime, timedelta
 
 from acp.common.contracts import DataSource, SurveillanceReport, TruthState
 from acp.common.geodesy import (
+    bearing_difference_deg,
     fpm_to_ft_per_second,
     normalize_bearing,
     project_forward,
 )
-from acp.sim.scenario import SIM_VERSION, AircraftSpec, Scenario
+from acp.sim.scenario import (
+    SIM_VERSION,
+    AircraftSpec,
+    ChangeSpeed,
+    ClimbTo,
+    Scenario,
+    SetSquawk,
+    TurnTo,
+)
 
 #: One metre expressed in degrees of latitude, for converting position noise.
 _DEGREES_PER_METRE = 1.0 / 111_320.0
 
+#: A vertical rate below this reads as level flight rather than a climb.
+LEVEL_THRESHOLD_FPM = 300.0
+
 
 @dataclass(frozen=True, slots=True)
 class AircraftTruth:
-    """Exact state of one aircraft. Never published to a production topic."""
+    """Exact state of one aircraft, plus the autopilot targets driving it.
+
+    The target fields are the aircraft's intent. They are never published on any
+    topic and never reach the pipeline -- see `AircraftSpec.plan`.
+    """
 
     icao24: str
     callsign: str
@@ -46,8 +64,26 @@ class AircraftTruth:
     track_deg: float
     vertical_rate_fpm: float
     squawk: str | None
-    phase: str
     airborne: bool
+
+    # Autopilot targets and the rates at which they are chased.
+    target_track_deg: float
+    turn_rate_deg_s: float
+    target_altitude_ft: float
+    climb_rate_fpm: float
+    target_speed_kt: float
+    acceleration_kt_s: float
+
+    @property
+    def phase(self) -> str:
+        """Coarse flight phase, derived from what the aircraft is doing now."""
+        if self.vertical_rate_fpm > LEVEL_THRESHOLD_FPM:
+            return "climb"
+        if self.vertical_rate_fpm < -LEVEL_THRESHOLD_FPM:
+            return "descent"
+        if abs(bearing_difference_deg(self.track_deg, self.target_track_deg)) > 1.0:
+            return "turn"
+        return "cruise"
 
 
 def _seed_for(scenario_seed: int, icao24: str) -> int:
@@ -76,6 +112,7 @@ class Simulation:
         self._start_time = start_time
         self._elapsed_s = 0.0
         self._report_sequence = 0
+        self._specs = {spec.icao24: spec for spec in scenario.aircraft}
         self._noise = {
             spec.icao24: random.Random(_seed_for(scenario.seed, spec.icao24))  # noqa: S311
             for spec in scenario.aircraft
@@ -111,41 +148,120 @@ class Simulation:
             track_deg=spec.initial.track_deg,
             vertical_rate_fpm=spec.initial.vertical_rate_fpm,
             squawk=spec.squawk,
-            phase=_phase_for(spec.initial.vertical_rate_fpm),
             airborne=spec.entry_time_s <= 0.0,
+            target_track_deg=spec.initial.track_deg,
+            turn_rate_deg_s=3.0,
+            # A non-zero initial vertical rate means "keep climbing"; the target
+            # is set far enough away that it is never reached unless commanded.
+            target_altitude_ft=(
+                spec.initial.altitude_ft
+                if abs(spec.initial.vertical_rate_fpm) < 1e-9
+                else (60000.0 if spec.initial.vertical_rate_fpm > 0 else 0.0)
+            ),
+            climb_rate_fpm=abs(spec.initial.vertical_rate_fpm) or 1800.0,
+            target_speed_kt=spec.initial.ground_speed_kt,
+            acceleration_kt_s=1.0,
         )
 
     def advance(self, dt_s: float) -> None:
         """Move the simulation forward by `dt_s` seconds."""
         if dt_s <= 0.0:
             raise ValueError("dt_s must be positive")
+        previous_s = self._elapsed_s
         self._elapsed_s += dt_s
-        entry = {spec.icao24: spec.entry_time_s for spec in self._scenario.aircraft}
-        self._state = {
-            icao24: self._advance_aircraft(state, dt_s, self._elapsed_s >= entry[icao24])
-            for icao24, state in self._state.items()
-        }
+
+        for icao24, state in self._state.items():
+            spec = self._specs[icao24]
+            commanded = self._apply_commands(state, spec, previous_s, self._elapsed_s)
+            self._state[icao24] = self._advance_aircraft(
+                commanded, dt_s, airborne=self._elapsed_s >= spec.entry_time_s
+            )
 
     @staticmethod
-    def _advance_aircraft(state: AircraftTruth, dt_s: float, airborne: bool) -> AircraftTruth:
+    def _apply_commands(
+        state: AircraftTruth, spec: AircraftSpec, from_s: float, to_s: float
+    ) -> AircraftTruth:
+        """Fire any plan commands whose time fell inside this step.
+
+        Commands are edge-triggered on the interval `(from_s, to_s]` so a step
+        larger than the gap between two commands still applies both, in order.
+        """
+        for command in spec.plan:
+            if not from_s < command.at_s <= to_s:
+                continue
+            if isinstance(command, TurnTo):
+                state = replace(
+                    state,
+                    target_track_deg=command.heading_deg,
+                    turn_rate_deg_s=command.rate_deg_s,
+                )
+            elif isinstance(command, ClimbTo):
+                state = replace(
+                    state,
+                    target_altitude_ft=command.altitude_ft,
+                    climb_rate_fpm=command.rate_fpm,
+                )
+            elif isinstance(command, ChangeSpeed):
+                state = replace(
+                    state,
+                    target_speed_kt=command.ground_speed_kt,
+                    acceleration_kt_s=command.acceleration_kt_s,
+                )
+            elif isinstance(command, SetSquawk):
+                state = replace(state, squawk=command.squawk)
+        return state
+
+    @staticmethod
+    def _advance_aircraft(state: AircraftTruth, dt_s: float, *, airborne: bool) -> AircraftTruth:
         """Propagate one aircraft by one step.
 
-        M1: constant ground speed along a constant track, with a constant
-        vertical rate. This is the same motion model the dead-reckoning baseline
-        assumes, which is exactly why M1 cannot say anything interesting about
-        prediction quality -- the predictor would be exact. M2 introduces
-        maneuvers, and with them the residual the model is meant to learn.
+        Each of the three axes chases its target at a bounded rate and stops
+        exactly on it rather than overshooting and oscillating -- which is what
+        an autopilot does, and what keeps the resulting track free of artefacts
+        the detectors would otherwise have to cope with.
         """
         if not airborne:
             return replace(state, airborne=False)
 
-        lat, lon = project_forward(
-            state.lat, state.lon, state.track_deg, state.ground_speed_kt, dt_s
+        # --- heading: turn the short way, at the commanded rate ---
+        to_turn = bearing_difference_deg(state.track_deg, state.target_track_deg)
+        max_turn = state.turn_rate_deg_s * dt_s
+        turn = math.copysign(min(abs(to_turn), max_turn), to_turn)
+        track_deg = normalize_bearing(state.track_deg + turn)
+
+        # --- speed: accelerate toward the target, never past it ---
+        to_accelerate = state.target_speed_kt - state.ground_speed_kt
+        max_accelerate = state.acceleration_kt_s * dt_s
+        speed_kt = state.ground_speed_kt + math.copysign(
+            min(abs(to_accelerate), max_accelerate), to_accelerate
         )
-        altitude_ft = max(
-            0.0, state.altitude_ft + fpm_to_ft_per_second(state.vertical_rate_fpm) * dt_s
+
+        # --- altitude: climb or descend toward the target and level off ---
+        to_climb_ft = state.target_altitude_ft - state.altitude_ft
+        max_climb_ft = fpm_to_ft_per_second(state.climb_rate_fpm) * dt_s
+        climb_ft = math.copysign(min(abs(to_climb_ft), max_climb_ft), to_climb_ft)
+        altitude_ft = max(0.0, state.altitude_ft + climb_ft)
+        # Reported vertical rate is the rate actually achieved this step, so it
+        # goes to zero the moment the aircraft levels off rather than lingering.
+        vertical_rate_fpm = (climb_ft / dt_s) * 60.0 if dt_s > 0 else 0.0
+
+        # Move along the average of the entry and exit headings. Using either
+        # endpoint alone biases a turning aircraft consistently to one side,
+        # which accumulates into a visible position error over a long turn.
+        mid_track = normalize_bearing(state.track_deg + turn / 2.0)
+        mid_speed = (state.ground_speed_kt + speed_kt) / 2.0
+        lat, lon = project_forward(state.lat, state.lon, mid_track, mid_speed, dt_s)
+
+        return replace(
+            state,
+            lat=lat,
+            lon=lon,
+            altitude_ft=altitude_ft,
+            ground_speed_kt=speed_kt,
+            track_deg=track_deg,
+            vertical_rate_fpm=vertical_rate_fpm,
+            airborne=True,
         )
-        return replace(state, lat=lat, lon=lon, altitude_ft=altitude_ft, airborne=True)
 
     def truth(self) -> tuple[TruthState, ...]:
         """Exact state of every airborne aircraft. Evaluation only."""
@@ -219,12 +335,3 @@ def _clamp(value: float, low: float, high: float) -> float:
 
 def _wrap_longitude(degrees: float) -> float:
     return (degrees + 180.0) % 360.0 - 180.0
-
-
-def _phase_for(vertical_rate_fpm: float) -> str:
-    """Coarse flight phase from vertical rate. Refined in M2."""
-    if vertical_rate_fpm > 300.0:
-        return "climb"
-    if vertical_rate_fpm < -300.0:
-        return "descent"
-    return "cruise"

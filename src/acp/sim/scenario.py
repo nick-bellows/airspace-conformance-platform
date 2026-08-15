@@ -13,7 +13,7 @@ and get exactly that, every time, so a detector can be scored against it.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -23,7 +23,11 @@ from acp.common.contracts import Bearing, Icao24, Latitude, Longitude, Squawk
 # Bump when the flight model or the noise model changes in a way that alters the
 # output for an unchanged scenario and seed. A bump invalidates every cached
 # dataset and requires regenerating each committed evaluation report.
-SIM_VERSION = "acp-sim-v1"
+#
+# v2: manoeuvring flight model - scripted turns, altitude and speed changes.
+# v1 flew constant velocity only, so any result recorded against it describes a
+# different problem and must not be compared with a v2 number.
+SIM_VERSION = "acp-sim-v2"
 
 
 class Frozen(BaseModel):
@@ -72,6 +76,50 @@ class InitialState(Frozen):
     vertical_rate_fpm: Annotated[float, Field(ge=-8000.0, le=8000.0)] = 0.0
 
 
+class TurnTo(Frozen):
+    """Roll onto a new heading at a constant rate.
+
+    3 deg/s is a *standard rate turn* -- a full circle in two minutes -- and is
+    what airliners are normally vectored at below about 250 kt. At cruise speed
+    the bank angle needed for 3 deg/s exceeds what passengers tolerate, so real
+    high-altitude turns are slower; scenarios that care use `rate_deg_s`.
+    """
+
+    kind: Literal["turn_to"] = "turn_to"
+    at_s: Annotated[float, Field(ge=0.0)]
+    heading_deg: Bearing
+    rate_deg_s: Annotated[float, Field(gt=0.0, le=10.0)] = 3.0
+
+
+class ClimbTo(Frozen):
+    """Change level and hold the new one."""
+
+    kind: Literal["climb_to"] = "climb_to"
+    at_s: Annotated[float, Field(ge=0.0)]
+    altitude_ft: Annotated[float, Field(ge=0.0, le=60000.0)]
+    rate_fpm: Annotated[float, Field(gt=0.0, le=8000.0)] = 1800.0
+
+
+class ChangeSpeed(Frozen):
+    """Accelerate or decelerate to a new ground speed."""
+
+    kind: Literal["change_speed"] = "change_speed"
+    at_s: Annotated[float, Field(ge=0.0)]
+    ground_speed_kt: Annotated[float, Field(ge=0.0, le=700.0)]
+    acceleration_kt_s: Annotated[float, Field(gt=0.0, le=10.0)] = 1.0
+
+
+class SetSquawk(Frozen):
+    """Change transponder code mid-flight, e.g. to declare an emergency."""
+
+    kind: Literal["set_squawk"] = "set_squawk"
+    at_s: Annotated[float, Field(ge=0.0)]
+    squawk: Squawk
+
+
+Command = Annotated[TurnTo | ClimbTo | ChangeSpeed | SetSquawk, Field(discriminator="kind")]
+
+
 class AircraftSpec(Frozen):
     """One aircraft in a scenario."""
 
@@ -82,6 +130,14 @@ class AircraftSpec(Frozen):
     #: Seconds after scenario start at which this aircraft appears. Lets a
     #: scenario stage arrivals rather than starting everything at once.
     entry_time_s: Annotated[float, Field(ge=0.0)] = 0.0
+    #: Scripted manoeuvres, applied when the clock reaches each `at_s`.
+    #:
+    #: This is the aircraft's *intent*, and it is never observable. The pipeline
+    #: sees only the positions that result, so a predictor cannot recover the
+    #: plan -- it can only learn how aircraft in this airspace tend to behave.
+    #: That is what stops the M3 model being a trivial inversion of the
+    #: simulator.
+    plan: tuple[Command, ...] = ()
 
 
 class Scenario(Frozen):

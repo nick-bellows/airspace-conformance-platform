@@ -13,11 +13,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from acp.common.contracts import SurveillanceReport, TrackState
-from acp.services.track.estimator import (
-    PLACEHOLDER_UNCERTAINTY_M,
-    TrackEstimator,
-    track_id_for,
-)
+from acp.services.track.estimator import TrackEstimator, track_id_for
 
 START = datetime(2026, 8, 15, 12, 0, 0, tzinfo=UTC)
 
@@ -127,50 +123,73 @@ def test_pruning_leaves_live_tracks_alone() -> None:
 # --------------------------------------------------------------------------
 
 
-def test_turn_rate_is_derived_from_consecutive_headings() -> None:
+def test_turn_rate_is_reported_when_an_aircraft_turns() -> None:
+    """Derived from *filtered* headings, so the sign and rough size are what
+    matter rather than an exact figure - the filter deliberately lags a turn."""
     estimator = TrackEstimator()
-    estimator.on_report(report(track_deg=90.0))
-    update = estimator.on_report(report(at=START + timedelta(seconds=2), track_deg=100.0))
-    assert update.turn_rate_deg_s == pytest.approx(5.0)
+    for i in range(20):
+        estimator.on_report(report(at=START + timedelta(seconds=i), track_deg=90.0))
+    turning = [
+        estimator.on_report(report(at=START + timedelta(seconds=20 + i), track_deg=90.0 + i * 3.0))
+        for i in range(1, 10)
+    ]
+    assert max(u.turn_rate_deg_s for u in turning) > 0.5
 
 
 def test_turn_rate_takes_the_short_way_round_north() -> None:
-    """A 350 -> 010 turn is +20 degrees, not -340.
+    """A track crossing north must not register as a 359 deg/s turn.
 
-    Without the signed shortest-turn helper this reads as a 170 deg/s turn,
-    which would look like a violent manoeuvre every time an aircraft tracked
-    through north.
+    Without the signed shortest-turn helper this reads as a violent manoeuvre
+    every single time an aircraft tracks through 360.
     """
     estimator = TrackEstimator()
-    estimator.on_report(report(track_deg=350.0))
-    update = estimator.on_report(report(at=START + timedelta(seconds=2), track_deg=10.0))
-    assert update.turn_rate_deg_s == pytest.approx(10.0)
+    updates = []
+    for i in range(40):
+        heading = (350.0 + i) % 360.0
+        updates.append(
+            estimator.on_report(report(at=START + timedelta(seconds=i), track_deg=heading))
+        )
+    assert max(abs(u.turn_rate_deg_s) for u in updates[5:]) < 10.0
 
 
-def test_a_report_missing_speed_and_heading_falls_back_to_the_track() -> None:
-    """Real surveillance drops fields; the estimate must still be complete."""
+def test_a_report_missing_speed_and_heading_still_produces_an_estimate() -> None:
+    """Real surveillance drops fields. The filter carries its velocity estimate
+    forward rather than inventing a measurement or discarding the report."""
     estimator = TrackEstimator()
-    estimator.on_report(report(lat=40.0, lon=-75.0))
+    for i in range(10):
+        estimator.on_report(report(at=START + timedelta(seconds=i)))
     update = estimator.on_report(
-        report(at=START + timedelta(seconds=10), lat=40.0, lon=-74.9, track_deg=None, speed_kt=None)
+        report(at=START + timedelta(seconds=10), track_deg=None, speed_kt=None)
     )
-    assert update.ground_speed_kt > 0.0  # derived from distance covered
-    assert 80.0 < update.track_deg < 100.0  # derived bearing, roughly east
+    assert update.ground_speed_kt > 0.0
+    assert 45.0 < update.track_deg < 135.0  # still heading roughly east
 
 
 def test_a_report_missing_altitude_keeps_the_last_known_value() -> None:
     estimator = TrackEstimator()
-    estimator.on_report(report(altitude_ft=35000.0))
-    update = estimator.on_report(report(at=START + timedelta(seconds=2), altitude_ft=None))
-    assert update.altitude_ft == 35000.0
+    for i in range(10):
+        estimator.on_report(report(at=START + timedelta(seconds=i), altitude_ft=35000.0))
+    update = estimator.on_report(report(at=START + timedelta(seconds=10), altitude_ft=None))
+    assert update.altitude_ft == pytest.approx(35000.0, abs=100.0)
 
 
-def test_a_stationary_aircraft_does_not_produce_a_nonsense_heading() -> None:
-    """Identical consecutive positions have no bearing; keep the previous one."""
+def test_the_estimate_is_smoother_than_the_reports() -> None:
+    """The reason the filter exists, asserted at the estimator boundary.
+
+    Reported altitude is jittered by 40 ft either side of a level aircraft; the
+    published estimate must not follow it.
+    """
     estimator = TrackEstimator()
-    estimator.on_report(report(track_deg=270.0))
-    update = estimator.on_report(report(at=START + timedelta(seconds=2), track_deg=None))
-    assert update.track_deg == pytest.approx(270.0)
+    published = []
+    for i in range(60):
+        jitter = 40.0 if i % 2 else -40.0
+        published.append(
+            estimator.on_report(
+                report(at=START + timedelta(seconds=i), altitude_ft=35000.0 + jitter)
+            ).altitude_ft
+        )
+    settled = published[20:]
+    assert max(settled) - min(settled) < 40.0
 
 
 def test_an_out_of_order_report_is_ignored() -> None:
@@ -188,17 +207,35 @@ def test_an_out_of_order_report_is_ignored() -> None:
 # --------------------------------------------------------------------------
 
 
-def test_uncertainty_is_the_placeholder_while_reports_are_arriving() -> None:
-    update = TrackEstimator().on_report(report())
-    assert update.position_uncertainty_m == pytest.approx(PLACEHOLDER_UNCERTAINTY_M)
+def test_uncertainty_falls_as_the_track_is_corroborated() -> None:
+    """Now a computed covariance rather than M1's constant, so it responds."""
+    estimator = TrackEstimator()
+    first = estimator.on_report(report())
+    for i in range(1, 30):
+        last = estimator.on_report(report(at=START + timedelta(seconds=i)))
+    assert last.position_uncertainty_m < first.position_uncertainty_m
 
 
 def test_uncertainty_grows_while_a_track_coasts() -> None:
-    """A coasting track is a guess. It must not look as trustworthy as a fix."""
+    """A coasting track is a guess. It must not look as trustworthy as a fix.
+
+    This falls out of the filter running on prediction alone: process noise
+    accumulates with no measurement to check it. No ad-hoc growth constant.
+    """
     estimator = TrackEstimator(coast_after_s=5.0)
-    fresh = estimator.on_report(report())
-    coasting = estimator.sweep(START + timedelta(seconds=10))[0]
-    assert coasting.position_uncertainty_m > fresh.position_uncertainty_m
+    for i in range(20):
+        settled = estimator.on_report(report(at=START + timedelta(seconds=i)))
+    coasting = estimator.sweep(START + timedelta(seconds=40))[0]
+    assert coasting.position_uncertainty_m > settled.position_uncertainty_m * 2.0
+
+
+def test_the_innovation_travels_downstream() -> None:
+    """The conformance service reads this off the wire as the manoeuvre signal."""
+    estimator = TrackEstimator()
+    for i in range(10):
+        update = estimator.on_report(report(at=START + timedelta(seconds=i)))
+    assert update.innovation_nm is not None
+    assert update.innovation_nm == pytest.approx(estimator.innovation_for("a1b2c3"))
 
 
 # --------------------------------------------------------------------------

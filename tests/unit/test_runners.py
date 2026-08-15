@@ -11,8 +11,6 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
-import pytest
-
 from acp.common.contracts import (
     TOPIC_SIM_TRUTH,
     TOPIC_SURVEILLANCE_REPORTS,
@@ -174,11 +172,20 @@ async def test_everything_published_also_reaches_both_stores() -> None:
 
 
 async def test_the_live_picture_holds_only_the_newest_update_per_track() -> None:
+    """One entry per track, and it is the latest one.
+
+    Asserted on the timestamp and update count rather than on position: the
+    estimate is filtered, so it deliberately does not equal the last reported
+    position. Checking the position here would be testing the filter's lag by
+    accident, and would break every time the tuning changed.
+    """
     reports = [a_report(at=START + timedelta(seconds=i), lon=-75.0 + i * 0.01) for i in range(5)]
     _, _, live = await _run_tracker(reports)
 
     assert len(live.current) == 1
-    assert live.current["trk-a1b2c3"].lon == pytest.approx(-75.0 + 4 * 0.01)
+    stored = live.current["trk-a1b2c3"]
+    assert stored.update_count == 5
+    assert stored.last_report_at == START + timedelta(seconds=4)
 
 
 async def test_several_aircraft_produce_several_tracks() -> None:

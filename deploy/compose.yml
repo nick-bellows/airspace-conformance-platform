@@ -119,6 +119,15 @@ services:
       migrate:
         condition: service_completed_successfully
 
+  conformance:
+    <<: *service-base
+    command: ["acp-conformance"]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
   api:
     <<: *service-base
     command: ["python", "-m", "acp.services.api.app"]

@@ -108,6 +108,11 @@ class TrackUpdate(Frozen):
     turn_rate_deg_s: float
     position_uncertainty_m: Annotated[float, Field(ge=0.0)]
     update_count: Annotated[int, Field(ge=0)]
+    #: How far this aircraft was from where constant-velocity physics predicted,
+    #: in nautical miles, at the last correction. This is the filter's surprise:
+    #: small when the aircraft flies as modelled, large when it manoeuvres.
+    #: Optional because a track that has only ever coasted has no innovation.
+    innovation_nm: Annotated[float, Field(ge=0.0)] | None = None
     squawk: Squawk | None = None
     source: DataSource = DataSource.SIMULATOR
     scenario_id: str | None = None
