@@ -7,13 +7,37 @@ Two coordinate treatments live here and they are used for different jobs:
   several trigonometric evaluations.
 * **Local tangent plane** (:func:`to_local_enu`, :func:`from_local_enu`) flattens
   a small neighbourhood to plain Cartesian nautical miles. Pairwise conflict
-  search is O(n^2) in the worst case, so the inner loop uses this instead. The
-  approximation error is under ~0.1% within 100 NM of the reference point, which
-  is far below the position uncertainty we are already carrying.
+  search is O(n^2) in the worst case, so the inner loop uses this instead.
+
+**How wrong the flat-earth shortcut is, measured rather than asserted.** Two
+distinct errors matter and they are not the same size:
+
+* *Distance from the reference point* is accurate to better than 0.1% out to a
+  few hundred miles. Pinned by ``test_local_projection_agrees_with_great_circle``.
+* *Distance between two points that are both offset from the reference* -- which
+  is what the conflict detector actually computes -- degrades considerably
+  faster, because the longitude scale factor is evaluated at the wrong latitude
+  for both of them. Measured on a 4 NM separation:
+
+  =============  ==========  ============
+  Offset from    Error on a  Error
+  reference      4 NM gap    (relative)
+  =============  ==========  ============
+  50 NM          0.026 NM    0.6%
+  100 NM         0.052 NM    1.3%
+  200 NM         0.110 NM    2.8%
+  300 NM         0.174 NM    4.4%
+  800 NM         0.610 NM    15.2%
+  =============  ==========  ============
+
+So the projection is fit for a sector a few hundred nautical miles across and
+not for a continent. :class:`~acp.services.conformance.separation.SeparationMonitor`
+states that as an operating limit and warns when traffic exceeds it. Real ATC
+partitions airspace into sectors for exactly this kind of reason.
 
 A spherical earth (not WGS-84) is deliberate: the ellipsoidal correction is
-roughly 0.3%, an order of magnitude smaller than simulated sensor noise, and it
-keeps the property tests exact enough to assert real invariants.
+roughly 0.3%, smaller than the projection error above and far smaller than the
+velocity-extrapolation error the conflict detector already carries.
 """
 
 from __future__ import annotations

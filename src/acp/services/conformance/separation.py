@@ -20,6 +20,20 @@ mistake in a naive implementation, and the `head-on-conflict` scenario contains
 an aircraft placed specifically to catch it: laterally close to the conflicting
 pair, but 4000 ft above.
 
+## Operating limit
+
+All tracks are projected into **one** tangent plane centred on the mean of the
+current picture. That projection distorts the distance between two aircraft in
+proportion to how far they are from the centre -- about 0.05 NM on a 4 NM gap at
+100 NM out, 0.17 NM at 300 NM, and 0.61 NM at 800 NM (see `acp.common.geodesy`).
+
+Against a 5 NM standard, anything past a few hundred miles is no longer a
+rounding error, so this class **warns when the picture exceeds
+`MAX_PICTURE_RADIUS_NM`**. The correct answer at that scale is to partition the
+airspace and run a monitor per sector, which is what real ATC does and why
+sectors exist at all. Warning rather than failing is deliberate: degraded
+geometry is still far better than no conflict detection.
+
 ## What this deliberately does not do
 
 Real conflict probes account for turn intent from the flight plan, for
@@ -37,6 +51,9 @@ from dataclasses import dataclass
 
 from acp.common.contracts import TrackUpdate
 from acp.common.geodesy import knots_to_nm_per_second, to_local_enu
+from acp.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 # Bump when the detection geometry or the defaults change. A bump invalidates
 # every committed conflict-detection report.
@@ -52,6 +69,12 @@ DEFAULT_LOOKAHEAD_S = 300.0
 #: reports old has a velocity estimate dominated by its initial guess, and
 #: pairing two of those produces confident nonsense.
 MIN_UPDATES_FOR_CONFLICT = 5
+
+#: How far from the centre of the picture a track may sit before the shared
+#: tangent-plane projection stops being accurate enough to trust against a 5 NM
+#: standard. At 300 NM the distortion is about 0.17 NM on a 4 NM gap; beyond
+#: that it grows quickly. Exceeding this logs a warning rather than failing.
+MAX_PICTURE_RADIUS_NM = 300.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,11 +135,13 @@ class SeparationMonitor:
         vertical_ft: float = DEFAULT_VERTICAL_FT,
         lookahead_s: float = DEFAULT_LOOKAHEAD_S,
         min_updates: int = MIN_UPDATES_FOR_CONFLICT,
+        max_radius_nm: float = MAX_PICTURE_RADIUS_NM,
     ) -> None:
         self._horizontal_nm = horizontal_nm
         self._vertical_ft = vertical_ft
         self._lookahead_s = lookahead_s
         self._min_updates = min_updates
+        self._max_radius_nm = max_radius_nm
 
     def scan(self, tracks: list[TrackUpdate]) -> list[Conflict]:
         """Test every plausible pair and return the conflicts found."""
@@ -130,6 +155,7 @@ class SeparationMonitor:
         ref_lat = sum(t.lat for t in eligible) / len(eligible)
         ref_lon = sum(t.lon for t in eligible) / len(eligible)
         states = [self._kinematics(t, ref_lat, ref_lon) for t in eligible]
+        self._check_picture_radius(states)
 
         conflicts = []
         for first, second in self._candidate_pairs(states):
@@ -139,6 +165,30 @@ class SeparationMonitor:
         # Soonest first: an alert list is read from the top under pressure.
         conflicts.sort(key=lambda c: c.time_to_cpa_s)
         return conflicts
+
+    def _check_picture_radius(self, states: list[_Kinematics]) -> float:
+        """Warn if the picture is too wide for one tangent plane to be honest.
+
+        Returns the radius so tests can assert on it. Logged once per scan at
+        WARNING, which is noisy by design: it means every separation figure in
+        that scan carries more error than the documented envelope, and a silent
+        degradation of a safety-relevant number is the wrong trade.
+        """
+        radius_nm = max(
+            (math.hypot(s.east_nm, s.north_nm) for s in states),
+            default=0.0,
+        )
+        if radius_nm > self._max_radius_nm:
+            _log.warning(
+                "airspace picture exceeds the accurate projection envelope; "
+                "separation distances are distorted. Partition into sectors.",
+                extra={
+                    "picture_radius_nm": round(radius_nm, 1),
+                    "max_radius_nm": self._max_radius_nm,
+                    "tracks": len(states),
+                },
+            )
+        return radius_nm
 
     @staticmethod
     def _kinematics(track: TrackUpdate, ref_lat: float, ref_lon: float) -> _Kinematics:

@@ -57,7 +57,7 @@ class ConformanceRunner:
 
     def __init__(
         self,
-        subscriber: MessageSubscriber[TrackUpdate],
+        subscriber: MessageSubscriber[TrackUpdate] | None,
         publisher: MessagePublisher,
         *,
         alert_store: LiveAlertStore | None = None,
@@ -78,13 +78,42 @@ class ConformanceRunner:
         self._updates = 0
         self._scans = 0
         self._alerts = 0
+        self._latest_seen: datetime | None = None
 
     @property
     def live_tracks(self) -> int:
         return len(self._picture)
 
+    @property
+    def clock(self) -> datetime:
+        """The time the scanner should reason about.
+
+        The later of the wall clock and the newest timestamp in the data, and
+        the reason is that this service must work in two different time regimes.
+
+        Live, the feed is paced against the wall clock and the two agree. Under
+        replay -- used for evaluation and for regenerating datasets -- the feed
+        runs flat out, so data time races minutes or hours ahead of wall time.
+        Judging staleness by the wall clock there would mark nothing stale, the
+        picture would grow without bound, and conflicts would be computed across
+        wildly inconsistent timestamps.
+
+        Taking the maximum handles both, and also handles the feed stopping: the
+        wall clock keeps advancing, so tracks still expire rather than freezing
+        on the display forever.
+        """
+        wall = datetime.now(UTC)
+        if self._latest_seen is None:
+            return wall
+        return max(wall, self._latest_seen)
+
     async def run(self) -> ConformanceStats:
         """Consume track updates until cancelled, scanning on a timer."""
+        if self._subscriber is None:
+            raise RuntimeError(
+                "ConformanceRunner was built without a subscriber; "
+                "drive it with absorb() and scan_now() instead of run()"
+            )
         scanner = asyncio.create_task(self._scan_forever())
         try:
             async for envelope in self._subscriber.stream():
@@ -108,6 +137,8 @@ class ConformanceRunner:
         if existing is not None and update.updated_at < existing.updated_at:
             return
         self._picture[update.track_id] = update
+        if self._latest_seen is None or update.updated_at > self._latest_seen:
+            self._latest_seen = update.updated_at
 
     async def scan_now(self, now: datetime) -> list[str]:
         """Run one scan and publish whatever changed. Returns the alert keys."""
@@ -196,7 +227,7 @@ class ConformanceRunner:
         while True:
             await asyncio.sleep(self._scan_interval_s)
             try:
-                await self.scan_now(datetime.now(UTC))
+                await self.scan_now(self.clock)
             except asyncio.CancelledError:
                 raise
             except Exception:  # noqa: BLE001 - a failed scan must not stop consumption

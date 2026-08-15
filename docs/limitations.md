@@ -92,6 +92,25 @@ only visible to someone who opens the report:
   deliberate ([ADR 0006](adr/0006-constant-velocity-filter.md)) because the lag
   is the manoeuvre signal, but it does mean reported position is least accurate
   exactly when an aircraft is manoeuvring.
+- **The conflict geometry has a range limit.** Every track is projected into one
+  flat plane centred on the mean of the picture, and that distorts the distance
+  between two aircraft in proportion to their distance from the centre:
+
+  | Distance from centre | Error on a 4 NM gap |
+  | --- | --- |
+  | 100 NM | 0.05 NM |
+  | 300 NM | 0.17 NM |
+  | 800 NM | 0.61 NM |
+
+  Against a 5 NM standard, past a few hundred miles this is no longer a rounding
+  error. The monitor logs a warning above 300 NM rather than failing, because
+  degraded detection beats none. The right answer at that scale is one monitor
+  per airspace sector — which is a large part of why sectors exist.
+
+  Found during the M2 review: the original docstring claimed "under 0.1% within
+  100 NM", which was true of distance *from* the reference point but not of the
+  distance *between two points both offset from it* — the quantity the detector
+  actually computes. Measured, corrected, and pinned by a test.
 
 ---
 

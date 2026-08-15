@@ -12,6 +12,8 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from typing import cast
 
+import pytest
+
 from acp.common.contracts import (
     TOPIC_ALERTS,
     AlertKind,
@@ -242,6 +244,60 @@ async def test_a_distant_conflict_is_only_an_advisory() -> None:
 # --------------------------------------------------------------------------
 # The consume loop
 # --------------------------------------------------------------------------
+
+
+# --------------------------------------------------------------------------
+# The scan clock, which has to work under replay as well as live
+# --------------------------------------------------------------------------
+
+
+def test_the_clock_follows_the_wall_when_there_is_no_data() -> None:
+    runner = a_runner(FakePublisher())
+    assert (datetime.now(UTC) - runner.clock).total_seconds() < 5.0
+
+
+def test_the_clock_follows_the_data_when_it_runs_ahead_of_the_wall() -> None:
+    """Under replay the feed runs flat out, so data time races ahead.
+
+    Judging staleness by the wall clock there would mark nothing stale, the
+    picture would grow without bound, and conflicts would be computed across
+    inconsistent timestamps.
+    """
+    runner = a_runner(FakePublisher())
+    future = datetime.now(UTC) + timedelta(hours=2)
+    runner.absorb(a_track("trk-a", at=future))
+    assert runner.clock == future
+
+
+def test_the_clock_falls_back_to_the_wall_when_the_feed_stops() -> None:
+    """Otherwise a dead feed freezes the picture instead of expiring it."""
+    runner = a_runner(FakePublisher())
+    runner.absorb(a_track("trk-a", at=datetime.now(UTC) - timedelta(hours=1)))
+    assert (datetime.now(UTC) - runner.clock).total_seconds() < 5.0
+
+
+async def test_replayed_traffic_still_expires() -> None:
+    """The regression this clock exists to prevent."""
+    runner = a_runner(FakePublisher(), stale_after_s=15.0)
+    base = datetime.now(UTC) + timedelta(hours=3)
+    for track in converging_pair(at=base):
+        runner.absorb(track)
+    assert runner.live_tracks == 2
+
+    runner.absorb(a_track("trk-c", lat=41.0, lon=-70.0, at=base + timedelta(seconds=60)))
+    await runner.scan_now(runner.clock)
+
+    assert runner.live_tracks == 1  # only the newest survived
+
+
+async def test_run_without_a_subscriber_fails_loudly() -> None:
+    """The evaluation harness builds one without a subscriber on purpose.
+
+    Silently doing nothing would make a broken service look healthy.
+    """
+    runner = ConformanceRunner(None, cast(MessagePublisher, FakePublisher()))
+    with pytest.raises(RuntimeError, match="without a subscriber"):
+        await runner.run()
 
 
 async def test_the_runner_consumes_updates_until_the_stream_ends() -> None:

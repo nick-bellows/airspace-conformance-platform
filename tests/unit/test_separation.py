@@ -236,6 +236,38 @@ def test_reason_codes_explain_the_alert() -> None:
 # --------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------
+# The projection has an operating limit, and it is observable
+# --------------------------------------------------------------------------
+
+
+def test_a_wide_picture_warns_that_geometry_is_degraded(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Beyond a few hundred miles the single tangent plane distorts separation
+    by a meaningful fraction of the 5 NM standard.
+
+    Warning rather than failing is deliberate: degraded conflict detection is
+    still much better than none. The correct fix at that scale is to partition
+    the airspace into sectors, which is what the message says.
+    """
+    far_lat, far_lon = destination_point(40.0, -75.0, 90.0, 700.0)
+    tracks = [
+        a_track("trk-here", lat=40.0, lon=-75.0),
+        a_track("trk-far", lat=far_lat, lon=far_lon),
+    ]
+    with caplog.at_level("WARNING"):
+        SeparationMonitor().scan(tracks)
+    assert any("projection envelope" in r.message for r in caplog.records)
+
+
+def test_a_normal_sized_picture_does_not_warn(caplog: pytest.LogCaptureFixture) -> None:
+    """The warning has to stay rare or it becomes noise people filter out."""
+    with caplog.at_level("WARNING"):
+        SeparationMonitor().scan(head_on_pair(separation_nm=60.0))
+    assert not [r for r in caplog.records if "projection envelope" in r.message]
+
+
 def test_the_grid_finds_the_same_conflicts_as_an_exhaustive_search() -> None:
     """A spatial index that changes the answer is a bug, not an optimisation.
 

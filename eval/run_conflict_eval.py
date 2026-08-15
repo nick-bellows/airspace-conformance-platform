@@ -129,7 +129,10 @@ async def replay(
     estimator = TrackEstimator()
     publisher = _CollectingPublisher()
     runner = ConformanceRunner(
-        subscriber=None,  # type: ignore[arg-type]
+        # No subscriber: the evaluation drives absorb() and scan_now() directly
+        # against the simulation clock rather than consuming Kafka. The detector
+        # and the alert lifecycle are the real ones; only the transport differs.
+        subscriber=None,
         publisher=publisher,  # type: ignore[arg-type]
         monitor=SeparationMonitor(
             horizontal_nm=horizontal_nm, vertical_ft=vertical_ft, lookahead_s=lookahead_s

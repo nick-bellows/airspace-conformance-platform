@@ -148,6 +148,36 @@ def test_dead_reckoning_covers_speed_times_time(
     assert haversine_nm(lat, lon, dest_lat, dest_lon) == pytest.approx(expected_nm, abs=1e-6)
 
 
+@pytest.mark.parametrize(
+    ("offset_nm", "max_error_nm"),
+    [(50.0, 0.03), (100.0, 0.06), (200.0, 0.12), (300.0, 0.20)],
+)
+def test_separation_error_at_range_stays_within_the_documented_envelope(
+    offset_nm: float, max_error_nm: float
+) -> None:
+    """Pins the table in the module docstring.
+
+    This is the error that actually matters: two aircraft a few miles apart,
+    both far from the projection origin. It grows much faster than the error in
+    distance-from-origin, and the conflict detector's operating limit is derived
+    from it. If someone widens the airspace without revisiting the projection,
+    this fails.
+    """
+    ref_lat, ref_lon = 40.6, -75.5
+    for bearing in range(0, 360, 15):
+        a_lat, a_lon = destination_point(ref_lat, ref_lon, float(bearing), offset_nm)
+        b_lat, b_lon = destination_point(a_lat, a_lon, float((bearing + 90) % 360), 4.0)
+
+        a_east, a_north = to_local_enu(ref_lat, ref_lon, a_lat, a_lon)
+        b_east, b_north = to_local_enu(ref_lat, ref_lon, b_lat, b_lon)
+
+        planar = math.hypot(b_east - a_east, b_north - a_north)
+        true_nm = haversine_nm(a_lat, a_lon, b_lat, b_lon)
+        assert abs(planar - true_nm) < max_error_nm, (
+            f"bearing {bearing} at {offset_nm} NM: {abs(planar - true_nm):.4f} NM error"
+        )
+
+
 def test_vertical_rate_conversion() -> None:
     """A 1800 fpm climb is 30 ft per second."""
     assert fpm_to_ft_per_second(1800.0) == pytest.approx(30.0)
