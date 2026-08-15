@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-15T18:38:42.783655+00:00",
+  "generated_at": "2026-08-15T20:14:46.150378+00:00",
   "versions": {
     "sim": "acp-sim-v2",
     "generator": "acp-gen-v1",
@@ -414,11 +414,57 @@
         "turning": 4495,
         "climbing_or_descending": 12318
       },
+      "bootstrap_test_same_family": {
+        "resamples": 400,
+        "scenarios": 30,
+        "median_nm_ci95": {
+          "dead_reckoning": [
+            0.9614,
+            1.0522
+          ],
+          "ridge": [
+            0.6087,
+            0.6771
+          ],
+          "neural": [
+            0.3875,
+            0.4472
+          ]
+        },
+        "neural_over_ridge_ci95": [
+          0.3098,
+          0.3941
+        ],
+        "neural_beats_ridge": true
+      },
       "stratum_samples_test_shifted": {
         "all": 325106,
         "cruise": 308435,
         "turning": 3830,
         "climbing_or_descending": 12841
+      },
+      "bootstrap_test_shifted": {
+        "resamples": 400,
+        "scenarios": 40,
+        "median_nm_ci95": {
+          "dead_reckoning": [
+            0.8091,
+            0.8952
+          ],
+          "ridge": [
+            0.4895,
+            0.5481
+          ],
+          "neural": [
+            0.4165,
+            0.4871
+          ]
+        },
+        "neural_over_ridge_ci95": [
+          0.0534,
+          0.1941
+        ],
+        "neural_beats_ridge": true
       },
       "shipped_artifact": "residual_neural_30s.pt"
     },
@@ -821,11 +867,57 @@
         "turning": 4495,
         "climbing_or_descending": 12318
       },
+      "bootstrap_test_same_family": {
+        "resamples": 400,
+        "scenarios": 30,
+        "median_nm_ci95": {
+          "dead_reckoning": [
+            2.2447,
+            2.5803
+          ],
+          "ridge": [
+            1.4017,
+            1.6449
+          ],
+          "neural": [
+            1.1245,
+            1.3251
+          ]
+        },
+        "neural_over_ridge_ci95": [
+          0.1391,
+          0.2508
+        ],
+        "neural_beats_ridge": true
+      },
       "stratum_samples_test_shifted": {
         "all": 313612,
         "cruise": 296941,
         "turning": 3830,
         "climbing_or_descending": 12841
+      },
+      "bootstrap_test_shifted": {
+        "resamples": 400,
+        "scenarios": 40,
+        "median_nm_ci95": {
+          "dead_reckoning": [
+            1.9098,
+            2.1596
+          ],
+          "ridge": [
+            1.1333,
+            1.3142
+          ],
+          "neural": [
+            1.1657,
+            1.3794
+          ]
+        },
+        "neural_over_ridge_ci95": [
+          -0.1272,
+          0.0555
+        ],
+        "neural_beats_ridge": false
       },
       "shipped_artifact": "residual_neural_60s.pt",
       "ridge_coefficients": {
@@ -1296,13 +1388,79 @@
         "turning": 4495,
         "climbing_or_descending": 12311
       },
+      "bootstrap_test_same_family": {
+        "resamples": 400,
+        "scenarios": 30,
+        "median_nm_ci95": {
+          "dead_reckoning": [
+            4.6902,
+            5.5222
+          ],
+          "ridge": [
+            3.0083,
+            3.6179
+          ],
+          "neural": [
+            2.5176,
+            2.9363
+          ]
+        },
+        "neural_over_ridge_ci95": [
+          0.1154,
+          0.2298
+        ],
+        "neural_beats_ridge": true
+      },
       "stratum_samples_test_shifted": {
         "all": 290622,
         "cruise": 273951,
         "turning": 3830,
         "climbing_or_descending": 12841
       },
+      "bootstrap_test_shifted": {
+        "resamples": 400,
+        "scenarios": 40,
+        "median_nm_ci95": {
+          "dead_reckoning": [
+            3.9271,
+            4.4981
+          ],
+          "ridge": [
+            2.4511,
+            2.8206
+          ],
+          "neural": [
+            2.2624,
+            2.6798
+          ]
+        },
+        "neural_over_ridge_ci95": [
+          -0.0097,
+          0.1338
+        ],
+        "neural_beats_ridge": false
+      },
       "shipped_artifact": "residual_neural_120s.pt"
+    }
+  },
+  "calibration": {
+    "30": {
+      "model_median_nm": 0.412,
+      "physics_median_nm": 1.0066,
+      "stratum": "turning",
+      "samples": 4495
+    },
+    "60": {
+      "model_median_nm": 1.2203,
+      "physics_median_nm": 2.4116,
+      "stratum": "turning",
+      "samples": 4495
+    },
+    "120": {
+      "model_median_nm": 2.7318,
+      "physics_median_nm": 5.0851,
+      "stratum": "turning",
+      "samples": 4495
     }
   }
 }

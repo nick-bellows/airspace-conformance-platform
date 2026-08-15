@@ -25,25 +25,34 @@ can ever fire. Conformance monitoring would silently stop working at exactly the
 moment the model became unavailable, which is the failure this codebase spends
 most of its effort avoiding elsewhere.
 
-The threshold is therefore calibrated against **measured typical error**, taken
-from `eval/results/trajectory_prediction.md`, with separate figures for the model
-and for the physics fallback. An alert then means "this aircraft deviated much
-more than a predictor of this kind usually does at this horizon", which is a
-statement that stays meaningful whichever predictor is running.
+The threshold is therefore calibrated against **measured typical error**, with
+separate figures for the model and for the physics fallback. An alert then means
+"this aircraft deviated much more than a predictor of this kind usually does at
+this horizon", which stays meaningful whichever predictor is running.
+
+Those figures come from `models/calibration.json`, written by the training run
+beside the model artifacts. They used to be constants copied into this file by
+hand, which meant retraining a more accurate model left the thresholds behind
+and made alerting quietly less sensitive. Loading them keeps the calibration and
+the model in step; the constants remain only as a fallback for a deployment that
+has no artifact.
 """
 
 from __future__ import annotations
 
+import json
 from collections import deque
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from acp.common.contracts import AlertKind, ConformanceEvidence, Severity, TrackUpdate
 from acp.common.geodesy import haversine_nm
 from acp.common.logging import get_logger
 from acp.ml.baselines import dead_reckon
 from acp.ml.features import WINDOW, state_from
-from acp.ml.predictor import TrajectoryPredictor
+from acp.ml.models import CALIBRATION_FILENAME
+from acp.ml.predictor import DEFAULT_MODELS_DIR, TrajectoryPredictor
 
 _log = get_logger(__name__)
 
@@ -52,22 +61,22 @@ MONITOR_VERSION = "acp-conformance-monitor-v1"
 #: How far ahead predictions are made and later checked.
 DEFAULT_HORIZON_S = 60.0
 
-#: Median horizontal error while turning, in nautical miles, from
-#: `eval/results/trajectory_prediction.md` (same-family test split). Turning is
-#: used rather than the overall median because it is the hard case: calibrating
-#: on cruise, where error is a few tens of metres, would make every turn an
-#: alert.
+#: Last-resort typical error, in nautical miles, used only when no calibration
+#: artifact is available. Training writes `models/calibration.json` and the
+#: monitor prefers it; these exist so a deployment without one still has
+#: defensible thresholds rather than none.
 #:
-#: These must be regenerated alongside the model. A model retrained to be more
-#: accurate with these left alone would make the monitor progressively less
-#: sensitive without anybody noticing.
-TYPICAL_MODEL_ERROR_NM = {30.0: 0.412, 60.0: 1.220, 120.0: 2.732}
+#: They are the same figures the training run produced, on the turning stratum
+#: of the held-out split. Turning rather than the overall median because it is
+#: the hard case: calibrating on cruise, where error is tens of metres, would
+#: make every turn an alert.
+FALLBACK_MODEL_ERROR_NM = {30.0: 0.412, 60.0: 1.220, 120.0: 2.732}
 
-#: The same figures for dead reckoning, used when the predictor has fallen back
-#: to physics. Larger, so the fallback alerts less readily -- which is correct:
+#: The same for dead reckoning, used when the predictor has fallen back to
+#: physics. Larger, so the fallback alerts less readily -- which is correct:
 #: physics is expected to be wrong more often, and treating that as a
 #: non-conformance would flood on every turn.
-TYPICAL_PHYSICS_ERROR_NM = {30.0: 1.007, 60.0: 2.412, 120.0: 5.085}
+FALLBACK_PHYSICS_ERROR_NM = {30.0: 1.007, 60.0: 2.412, 120.0: 5.085}
 
 #: How many times the typical error a deviation must exceed to be reported.
 #: Not swept -- it trades sensitivity against false alerts and no calibration
@@ -80,6 +89,48 @@ MINIMUM_THRESHOLD_NM = 1.5
 #: Predictions older than this are discarded unmatched. Slightly wider than the
 #: horizon so a dropped report does not lose the comparison entirely.
 MATCH_TOLERANCE_S = 3.0
+
+
+@dataclass(frozen=True, slots=True)
+class Calibration:
+    """Typical prediction error per horizon, for the model and for physics.
+
+    Loaded from the artifact the training run writes. Falling back to compiled
+    constants is deliberate: a deployment with no artifact should have
+    defensible thresholds rather than none, and it logs which it is using so
+    the situation is visible rather than assumed.
+    """
+
+    model_nm: dict[float, float]
+    physics_nm: dict[float, float]
+    source: str
+
+    @classmethod
+    def load(cls, models_dir: Path = DEFAULT_MODELS_DIR) -> Calibration:
+        path = models_dir / CALIBRATION_FILENAME
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            horizons = payload["horizons"]
+            calibration = cls(
+                model_nm={float(k): float(v["model_median_nm"]) for k, v in horizons.items()},
+                physics_nm={float(k): float(v["physics_median_nm"]) for k, v in horizons.items()},
+                source=str(path),
+            )
+        except (OSError, KeyError, ValueError, TypeError):
+            _log.warning(
+                "no usable calibration artifact; using compiled fallback thresholds",
+                extra={"path": str(path)},
+            )
+            return cls(
+                model_nm=dict(FALLBACK_MODEL_ERROR_NM),
+                physics_nm=dict(FALLBACK_PHYSICS_ERROR_NM),
+                source="compiled fallback",
+            )
+        _log.info(
+            "loaded conformance calibration",
+            extra={"source": calibration.source, "horizons": sorted(calibration.model_nm)},
+        )
+        return calibration
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,11 +213,13 @@ class ConformanceMonitor:
         horizon_s: float = DEFAULT_HORIZON_S,
         threshold_factor: float = DEFAULT_THRESHOLD_FACTOR,
         minimum_threshold_nm: float = MINIMUM_THRESHOLD_NM,
+        calibration: Calibration | None = None,
     ) -> None:
         self._predictor = predictor or TrajectoryPredictor(horizon_s)
         self._horizon_s = horizon_s
         self._threshold_factor = threshold_factor
         self._minimum_threshold_nm = minimum_threshold_nm
+        self._calibration = calibration if calibration is not None else Calibration.load()
         self._windows: dict[str, deque[TrackUpdate]] = {}
         self._pending: dict[str, deque[_PendingPrediction]] = {}
 
@@ -195,7 +248,7 @@ class ConformanceMonitor:
 
     def _threshold_for(self, used_model: bool) -> float:
         """Deviation, in NM, beyond which this horizon counts as non-conforming."""
-        table = TYPICAL_MODEL_ERROR_NM if used_model else TYPICAL_PHYSICS_ERROR_NM
+        table = self._calibration.model_nm if used_model else self._calibration.physics_nm
         typical = table.get(self._horizon_s)
         if typical is None:
             # An uncalibrated horizon. Fall back to the floor and say so, rather
@@ -213,6 +266,12 @@ class ConformanceMonitor:
             return None
 
         tolerance = timedelta(seconds=MATCH_TOLERANCE_S)
+        # Several predictions can mature against one update, after a dropout.
+        # Keeping the *last* one silently discarded worse deviations that had
+        # matured in the same burst; keeping the worst is the conservative
+        # choice for a safety advisory. Only one survives either way, because
+        # alerts are keyed per track and the lifecycle collapses them -- so the
+        # question is which one, not how many.
         finding: NonConformance | None = None
 
         while queue:
@@ -231,7 +290,7 @@ class ConformanceMonitor:
                 candidate.baseline_lat, candidate.baseline_lon, update.lat, update.lon
             )
             threshold = self._threshold_for(candidate.source == "model")
-            if error_nm > threshold:
+            if error_nm > threshold and (finding is None or error_nm > finding.error_nm):
                 finding = NonConformance(
                     track_id=update.track_id,
                     callsign=update.callsign,

@@ -27,12 +27,7 @@ from acp.common.contracts import TrackUpdate
 from acp.common.logging import get_logger
 from acp.ml.baselines import Prediction, apply_along_cross, dead_reckon
 from acp.ml.features import WINDOW, extract, state_from
-from acp.ml.models import (
-    MODEL_VERSION,
-    NeuralResidualModel,
-    ResidualModel,
-    RidgeResidualModel,
-)
+from acp.ml.models import MODEL_VERSION, ResidualModel, RidgeResidualModel
 
 _log = get_logger(__name__)
 
@@ -97,13 +92,22 @@ class TrajectoryPredictor:
         path, kind = found
         try:
             if kind == "neural":
+                # Imported here, not at module scope, so that an installation
+                # without the `ml` extra can still run the service on physics.
+                # A top-level torch import made the documented "degrades to
+                # dead reckoning" promise false: the process died at import
+                # rather than starting and logging.
+                from acp.ml.neural import NeuralResidualModel
+
                 return NeuralResidualModel.load(path)
             return RidgeResidualModel.load(path)
         except Exception:  # noqa: BLE001 - see below
-            # Deliberately blind. A corrupt or version-mismatched artifact must
-            # not stop the service starting; it degrades to physics and logs
-            # loudly. Refusing to boot because a model file is bad would take
-            # conflict detection down with it.
+            # Deliberately blind, and ImportError is one of the cases it must
+            # cover. A corrupt artifact, a version mismatch, or a missing
+            # machine-learning dependency must not stop the service starting;
+            # each degrades to physics and logs loudly. Refusing to boot
+            # because a model file is bad would take conflict detection down
+            # with it.
             _log.exception("failed to load trajectory model; falling back to dead reckoning")
             return None
 

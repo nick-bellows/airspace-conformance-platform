@@ -42,9 +42,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      # Services are typed against their real clients, so the runtime extras
-      # have to be present or mypy checks against stubs that are not there.
-      - run: pip install -e ".[dev,messaging,storage,api]"
+      # Every extra, including `ml`. Services are typed against their real
+      # clients, and mypy analyses `acp/ml` whether or not torch is installed --
+      # so omitting `ml` here failed the job outright rather than degrading.
+      # That is exactly what happened when the ML code landed: the local gate
+      # passed because the dev venv had everything, and CI could not.
+      - run: pip install -e ".[all]" --extra-index-url https://download.pytorch.org/whl/cpu
       - run: mypy src
 
   unit:
@@ -56,7 +59,10 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - run: pip install -e ".[dev,messaging,storage,api]"
+      # `ml` included deliberately rather than guarding the tests with
+      # importorskip: skipping would let CI green-light a build whose model
+      # cannot be imported at all.
+      - run: pip install -e ".[all]" --extra-index-url https://download.pytorch.org/whl/cpu
       - run: pytest tests/unit tests/contract --cov=acp --cov-report=term-missing --cov-report=xml
       - uses: actions/upload-artifact@v4
         if: always()
@@ -80,6 +86,34 @@ jobs:
       # a consumer, and it is deliberately its own check so the failure is
       # unmistakable in the checks list.
       - run: python scripts/contracts.py --check
+
+  degradation:
+    name: runs without the ml extra
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      # Deliberately WITHOUT `ml`: no torch, no scikit-learn.
+      - run: pip install -e ".[dev,messaging,storage,api]"
+      # The model card and ADR 0007 both promise the system degrades to dead
+      # reckoning when the model is unavailable. That promise was false while
+      # torch was imported at module scope -- the service died at import rather
+      # than starting. This job is the executable form of the claim.
+      - name: the conformance service imports without torch
+        run: python -c "import acp.services.conformance.__main__"
+      - name: the predictor falls back to physics
+        run: |
+          python - <<'PY'
+          import importlib.util, sys
+          assert importlib.util.find_spec("torch") is None, "torch present; this job proves nothing"
+          from acp.ml.predictor import TrajectoryPredictor
+          p = TrajectoryPredictor(60.0)
+          assert not p.has_model, "expected no model without the ml extra"
+          print("degrades to physics:", p.version)
+          PY
 
   compose:
     name: compose config + image build

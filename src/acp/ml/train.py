@@ -46,11 +46,12 @@ from acp.ml.baselines import (
 from acp.ml.dataset import DATASET_VERSION, Dataset, build, fit_standardiser
 from acp.ml.features import FEATURE_VERSION
 from acp.ml.models import (
+    CALIBRATION_FILENAME,
     MODEL_VERSION,
-    NeuralResidualModel,
     ResidualModel,
     RidgeResidualModel,
 )
+from acp.ml.neural import NeuralResidualModel
 from acp.sim.generator import GENERATOR_VERSION, SHIFTED, TRAINING, generate_family
 from acp.sim.scenario import SIM_VERSION
 
@@ -220,6 +221,78 @@ def _physics_residuals(dataset: Dataset, kind: str) -> npt.NDArray[np.float64]:
     return np.stack([along - dr_along, cross, np.zeros_like(dr_along)], axis=1)
 
 
+#: Bootstrap resamples. 400 is enough for a 95% interval to be stable to a few
+#: thousandths of a nautical mile, and cheap on a few thousand samples.
+BOOTSTRAP_RESAMPLES = 400
+
+
+def bootstrap_interval(
+    dataset: Dataset,
+    residuals: dict[str, npt.NDArray[np.float64]],
+    mask: npt.NDArray[np.bool_],
+    *,
+    resamples: int = BOOTSTRAP_RESAMPLES,
+    seed: int = 4242,
+) -> dict[str, Any]:
+    """Scenario-clustered bootstrap of median error, and of the neural-vs-ridge gap.
+
+    **Resampling scenarios rather than samples is the whole point.** Consecutive
+    samples from one flight are the same twenty-second window shifted by a
+    second, so they are almost identical. Treating 4,495 of those as 4,495
+    independent observations would produce an interval far too narrow to mean
+    anything -- the effective sample size is closer to the number of *scenarios*,
+    which is thirty.
+
+    Reported because a project that insists on measured claims should not ask a
+    reader to take "neural beats ridge by 24%" on trust when the underlying n is
+    much smaller than it looks.
+    """
+    rng = np.random.default_rng(seed)
+    errors = {name: _errors_nm(dataset, r) for name, r in residuals.items()}
+    scenarios = np.array(dataset.scenario_ids)
+    unique = np.unique(scenarios[mask])
+    if len(unique) < 2:
+        return {"resamples": 0, "note": "too few scenarios to bootstrap"}
+
+    # Precompute per-scenario index arrays so each resample is a concatenation
+    # rather than a full pass over the dataset.
+    indices = {name: np.flatnonzero(mask & (scenarios == name)) for name in unique}
+
+    draws: dict[str, list[float]] = {name: [] for name in residuals}
+    gaps: list[float] = []
+    for _ in range(resamples):
+        chosen = rng.choice(unique, size=len(unique), replace=True)
+        picked = np.concatenate([indices[name] for name in chosen])
+        for name, error in errors.items():
+            draws[name].append(float(np.median(error[picked])))
+        if "neural" in errors and "ridge" in errors:
+            ridge_median = float(np.median(errors["ridge"][picked]))
+            neural_median = float(np.median(errors["neural"][picked]))
+            if ridge_median > 0:
+                gaps.append((ridge_median - neural_median) / ridge_median)
+
+    summary: dict[str, Any] = {
+        "resamples": resamples,
+        "scenarios": len(unique),
+        "median_nm_ci95": {
+            name: [
+                round(float(np.percentile(values, 2.5)), 4),
+                round(float(np.percentile(values, 97.5)), 4),
+            ]
+            for name, values in draws.items()
+        },
+    }
+    if gaps:
+        summary["neural_over_ridge_ci95"] = [
+            round(float(np.percentile(gaps, 2.5)), 4),
+            round(float(np.percentile(gaps, 97.5)), 4),
+        ]
+        # The decision the interval is there to support: is the improvement
+        # distinguishable from zero at all?
+        summary["neural_beats_ridge"] = bool(float(np.percentile(gaps, 2.5)) > 0.0)
+    return summary
+
+
 def evaluate_all(
     dataset: Dataset, models: dict[str, ResidualModel]
 ) -> dict[str, list[dict[str, object]]]:
@@ -311,6 +384,7 @@ def train_and_evaluate(args: argparse.Namespace) -> dict[str, Any]:
     }
 
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
+    calibration: dict[str, dict[str, Any]] = {}
 
     for horizon in HORIZONS:
         print(f"\n=== horizon {horizon:.0f} s ===")
@@ -373,6 +447,14 @@ def train_and_evaluate(args: argparse.Namespace) -> dict[str, Any]:
                 k: int(v.sum()) for k, v in strata(datasets[split]).items()
             }
 
+            residuals = {
+                "dead_reckoning": _physics_residuals(datasets[split], "dead_reckoning"),
+                **{n: m.predict(datasets[split].features) for n, m in models.items()},
+            }
+            horizon_report[f"bootstrap_{split}"] = bootstrap_interval(
+                datasets[split], residuals, strata(datasets[split])[SELECTION_STRATUM]
+            )
+
             turning = {row["model"]: row for row in by_stratum[SELECTION_STRATUM]}
             climbing = {row["model"]: row for row in by_stratum["climbing_or_descending"]}
             print(
@@ -405,11 +487,41 @@ def train_and_evaluate(args: argparse.Namespace) -> dict[str, Any]:
             neural.save(MODELS_DIR / f"residual_neural_{int(horizon)}s.pt")
             horizon_report["shipped_artifact"] = f"residual_neural_{int(horizon)}s.pt"
 
+        # Typical error on the turning stratum of the held-out split, for both
+        # the shipped model and the physics fallback. The conformance monitor
+        # reads this rather than carrying hand-copied constants: retraining a
+        # more accurate model used to leave the thresholds behind, making
+        # alerting progressively less sensitive with nothing to indicate it.
+        turning = {
+            row["model"]: row
+            for row in horizon_report["results"]["test_same_family"][SELECTION_STRATUM]
+        }
+        calibration[str(int(horizon))] = {
+            "model_median_nm": turning[winner]["median_nm"],
+            "physics_median_nm": turning["dead_reckoning"]["median_nm"],
+            "stratum": SELECTION_STRATUM,
+            "samples": turning[winner]["samples"],
+        }
+
         if horizon == 60.0:
             horizon_report["ridge_coefficients"] = ridge.coefficients()
 
         report["horizons"][f"{int(horizon)}s"] = horizon_report
 
+    (MODELS_DIR / CALIBRATION_FILENAME).write_text(
+        json.dumps(
+            {
+                "model_version": MODEL_VERSION,
+                "generated_at": report["generated_at"],
+                "seed": args.seed,
+                "horizons": calibration,
+            },
+            indent=2,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    report["calibration"] = calibration
     return report
 
 
@@ -431,6 +543,54 @@ def _stratum_table(rows: list[dict[str, Any]], *, altitude: bool = False) -> str
             for r in rows
         ]
     return "\n".join([header, *lines])
+
+
+def _shift_verdict(horizons: dict[str, Any]) -> str:
+    """State, per horizon, whether neural beats ridge on shifted traffic.
+
+    Generated from the bootstrap rather than written by hand, so it cannot drift
+    away from the numbers it describes the way a prose summary would.
+    """
+    lines = []
+    for name, horizon in horizons.items():
+        bootstrap = horizon.get("bootstrap_test_shifted", {})
+        interval = bootstrap.get("neural_over_ridge_ci95")
+        if interval is None:
+            continue
+        low, high = interval
+        verdict = (
+            "distinguishable from zero"
+            if bootstrap.get("neural_beats_ridge")
+            else "**not distinguishable from zero**"
+        )
+        lines.append(f"- **{name}** on shifted traffic: {low:+.1%} to {high:+.1%}, {verdict}")
+    return "\n".join(lines) if lines else "_No shifted bootstrap available._"
+
+
+def _bootstrap_note(bootstrap: dict[str, Any]) -> str:
+    """One paragraph of confidence intervals under a results table."""
+    if not bootstrap or not bootstrap.get("resamples"):
+        return "_No bootstrap: too few scenarios._"
+
+    intervals = bootstrap["median_nm_ci95"]
+    lines = [
+        f"95% confidence intervals from {bootstrap['resamples']} bootstrap resamples over "
+        f"{bootstrap['scenarios']} **scenarios** (not samples — consecutive windows from one "
+        "flight are near-duplicates, so the effective sample size is the number of flights):",
+        "",
+    ]
+    lines += [
+        f"- `{name}` median {low} to {high} NM" for name, (low, high) in sorted(intervals.items())
+    ]
+    if "neural_over_ridge_ci95" in bootstrap:
+        low, high = bootstrap["neural_over_ridge_ci95"]
+        verdict = (
+            "the improvement is distinguishable from zero"
+            if bootstrap.get("neural_beats_ridge")
+            else "**the improvement is not distinguishable from zero**"
+        )
+        lines += ["", f"Neural over ridge: {low:+.1%} to {high:+.1%}, so {verdict}."]
+    return "\n".join(lines)
 
 
 def render_report(report: dict[str, Any]) -> str:
@@ -497,9 +657,13 @@ def render_report(report: dict[str, Any]) -> str:
             "",
             _stratum_table(results["test_same_family"]["turning"]),
             "",
+            _bootstrap_note(horizon.get("bootstrap_test_same_family", {})),
+            "",
             "**Shifted family (different airspace)**",
             "",
             _stratum_table(results["test_shifted"]["turning"]),
+            "",
+            _bootstrap_note(horizon.get("bootstrap_test_shifted", {})),
             "",
             "### Climbing or descending — altitude error",
             "",
@@ -532,10 +696,26 @@ def render_report(report: dict[str, Any]) -> str:
         "place vertically at 60 s and beyond. A deployment that cared about",
         "30 s altitude should use the baseline.",
         "",
-        "**The neural network beats ridge, but not by enough to be obvious.**",
-        "Both are trained on identical features and predict the same residual.",
-        "The margin narrows as the horizon grows. If a deployment valued",
-        "inspectability, shipping ridge would be defensible on these numbers.",
+        "**The neural network's advantage over ridge does not survive",
+        "distribution shift at longer horizons.** This is the most important",
+        "finding in the report and it only became visible with confidence",
+        "intervals.",
+        "",
+        _shift_verdict(horizons),
+        "",
+        "Both models are trained on identical features and predict the same",
+        "residual, and **both clearly beat dead reckoning everywhere** -- those",
+        "intervals do not overlap at all. The question is only whether the extra",
+        "capacity earns its place. On traffic resembling the training set it",
+        "clearly does. On traffic that does not resemble it, at the horizons",
+        "that matter most, the honest answer is that these data cannot tell the",
+        "two apart.",
+        "",
+        "The shipped model is still the one validation chose, because selecting",
+        "on the shift test would turn the shift test into a training signal and",
+        "destroy the only out-of-distribution estimate available. But a",
+        "deployment that valued inspectability over an advantage this uncertain",
+        "would be right to ship ridge, and its weights are recorded below.",
         "",
         "## What this does not measure",
         "",

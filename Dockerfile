@@ -23,10 +23,18 @@ COPY src ./src
 
 # CPU-only torch. The default wheel pulls the entire CUDA runtime -- roughly two
 # gigabytes of GPU libraries that would never be used on this stack.
+#
+# One install, with the PyTorch CPU index as an *extra* index rather than two
+# sequential installs. Installing torch first and the project second worked, but
+# only by luck: the second resolve would have been free to replace the CPU wheel
+# with the CUDA one from PyPI the moment a version bump made the pinned range
+# resolve differently, and a two-gigabyte image change is not something to
+# discover in a release.
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
-    && /opt/venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch \
-    && /opt/venv/bin/pip install ".[messaging,storage,api,ml]"
+    && /opt/venv/bin/pip install \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
+        ".[messaging,storage,api,ml]"
 
 
 FROM python:3.13-slim AS runtime

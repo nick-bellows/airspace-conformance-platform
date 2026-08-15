@@ -1,8 +1,9 @@
-"""Residual models: ridge regression and a small neural network.
+"""Residual models: ridge regression, and the interface the serving path uses.
 
-Both predict the same three numbers -- the along-track, cross-track, and
-altitude error of a dead-reckoning prediction -- and both are used the same way:
-dead reckon, then add the correction.
+The PyTorch model lives in `neural.py` so that torch stays an optional
+dependency -- see that module for why. Nothing here imports torch, and scikit-learn
+is imported inside the methods that need it, so this module can be imported by a
+service that has neither installed.
 
 ## Why residual rather than direct prediction
 
@@ -31,21 +32,41 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 import numpy as np
 import numpy.typing as npt
-import torch
-from sklearn.linear_model import Ridge
-from torch import nn
 
 from acp.ml.features import FEATURE_NAMES, N_FEATURES, Standardiser
 
 #: Bump when a model's architecture or training procedure changes.
 MODEL_VERSION = "acp-residual-v1"
 
+#: Typical-error figures written beside the model artifacts by the training run
+#: and read by the conformance monitor. Declared here, in the module with no
+#: heavy dependencies, so the monitor can find the name without importing the
+#: training code -- which would drag torch back into the serving path and undo
+#: the whole point of `neural.py` being separate.
+CALIBRATION_FILENAME = "calibration.json"
+
 N_TARGETS = 3
 TARGET_NAMES = ("along_track_nm", "cross_track_nm", "altitude_ft")
+
+
+def version_mismatch(stamped: object, path: Path) -> str | None:
+    """Describe a version problem with an artifact, or None if it is fine.
+
+    Artifacts carry the version they were trained under. Checking it on *load*
+    rather than only stamping it on save is what stops a stale file -- trained
+    against a different feature order, or a different target definition --
+    loading cleanly and predicting confidently forever. The degradation path
+    already catches crashes and NaNs; version skew produces neither.
+    """
+    if stamped is None:
+        return f"{path.name}: no model_version stamp; refusing to load"
+    if stamped != MODEL_VERSION:
+        return f"{path.name}: trained as {stamped!r}, this build expects {MODEL_VERSION!r}"
+    return None
 
 
 class ResidualModel(Protocol):
@@ -78,7 +99,7 @@ class RidgeResidualModel:
     """Linear least squares with L2 regularisation, on standardised features."""
 
     standardiser: Standardiser
-    model: Ridge
+    model: Any
     name: str = "ridge"
 
     @classmethod
@@ -90,6 +111,8 @@ class RidgeResidualModel:
         *,
         alpha: float = 1.0,
     ) -> RidgeResidualModel:
+        from sklearn.linear_model import Ridge
+
         ridge = Ridge(alpha=alpha)
         ridge.fit(standardiser.transform(features), targets)
         return cls(standardiser=standardiser, model=ridge)
@@ -119,6 +142,7 @@ class RidgeResidualModel:
                 {
                     "model_version": MODEL_VERSION,
                     "kind": "ridge",
+                    "n_features": N_FEATURES,
                     "standardiser": self.standardiser.to_dict(),
                     "coef": self.model.coef_.tolist(),
                     "intercept": self.model.intercept_.tolist(),
@@ -130,170 +154,23 @@ class RidgeResidualModel:
 
     @classmethod
     def load(cls, path: Path) -> RidgeResidualModel:
+        from sklearn.linear_model import Ridge
+
         payload = json.loads(path.read_text(encoding="utf-8"))
+        problem = version_mismatch(payload.get("model_version"), path)
+        if problem is not None:
+            raise ValueError(problem)
+
+        coef = np.array(payload["coef"], dtype=np.float64)
+        # A width check as well as a version check: a hand-edited artifact could
+        # carry the right stamp and the wrong shape, and a silent broadcast
+        # would be worse than a refusal.
+        if coef.shape != (N_TARGETS, N_FEATURES):
+            raise ValueError(
+                f"{path.name}: coefficients are {coef.shape}, expected {(N_TARGETS, N_FEATURES)}"
+            )
+
         ridge = Ridge()
-        ridge.coef_ = np.array(payload["coef"], dtype=np.float64)
+        ridge.coef_ = coef
         ridge.intercept_ = np.array(payload["intercept"], dtype=np.float64)
-        return cls(
-            standardiser=Standardiser.from_dict(payload["standardiser"]),
-            model=ridge,
-        )
-
-
-class _MLP(nn.Module):
-    """Two hidden layers. Small on purpose.
-
-    Roughly 5,000 parameters against tens of thousands of samples. A larger
-    network would fit the training scenarios more closely without predicting
-    unseen traffic any better, and the distribution-shift split would show it.
-    """
-
-    def __init__(self, hidden: int = 64) -> None:
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(N_FEATURES, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, hidden // 2),
-            nn.ReLU(),
-            nn.Linear(hidden // 2, N_TARGETS),
-        )
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        return self.net(x)  # type: ignore[no-any-return]
-
-
-@dataclass
-class NeuralResidualModel:
-    """A small MLP over the same features the ridge model sees."""
-
-    standardiser: Standardiser
-    net: _MLP
-    #: Per-target scaling of the targets themselves. Altitude error is in feet
-    #: and position error in nautical miles, so an unscaled loss would be
-    #: dominated almost entirely by altitude and the position outputs would
-    #: barely train.
-    target_scale: npt.NDArray[np.float64]
-    name: str = "neural"
-    epochs_trained: int = 0
-
-    @classmethod
-    def train(
-        cls,
-        features: npt.NDArray[np.float64],
-        targets: npt.NDArray[np.float64],
-        standardiser: Standardiser,
-        *,
-        validation: tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]] | None = None,
-        epochs: int = 120,
-        batch_size: int = 256,
-        learning_rate: float = 1e-3,
-        patience: int = 15,
-        seed: int = 20260815,
-    ) -> NeuralResidualModel:
-        """Train with early stopping on a validation split.
-
-        Determinism is enforced by seeding torch and numpy: a model card that
-        quotes an error figure has to be reproducible, and "roughly this number"
-        is not a result.
-        """
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-
-        target_scale = np.abs(targets).mean(axis=0)
-        target_scale[target_scale < 1e-9] = 1.0
-
-        x = torch.tensor(standardiser.transform(features), dtype=torch.float32)
-        y = torch.tensor(targets / target_scale, dtype=torch.float32)
-
-        net = _MLP()
-        optimiser = torch.optim.Adam(net.parameters(), lr=learning_rate)
-        # Huber rather than MSE. Trajectory residuals have a long tail -- a
-        # go-around or a hard turn produces an error many times the typical
-        # one -- and squared error would let a handful of those dominate every
-        # gradient and drag the model off the common case.
-        criterion = nn.HuberLoss(delta=1.0)
-
-        val_x = val_y = None
-        if validation is not None:
-            val_features, val_targets = validation
-            val_x = torch.tensor(standardiser.transform(val_features), dtype=torch.float32)
-            val_y = torch.tensor(val_targets / target_scale, dtype=torch.float32)
-
-        best_loss = float("inf")
-        best_state = {k: v.clone() for k, v in net.state_dict().items()}
-        since_improvement = 0
-        completed = 0
-
-        for epoch in range(epochs):
-            net.train()
-            permutation = torch.randperm(x.shape[0])
-            for start in range(0, x.shape[0], batch_size):
-                batch = permutation[start : start + batch_size]
-                optimiser.zero_grad()
-                loss = criterion(net(x[batch]), y[batch])
-                loss.backward()
-                optimiser.step()
-            completed = epoch + 1
-
-            if val_x is None or val_y is None:
-                continue
-            net.eval()
-            with torch.no_grad():
-                validation_loss = float(criterion(net(val_x), val_y))
-            if validation_loss < best_loss - 1e-6:
-                best_loss = validation_loss
-                best_state = {k: v.clone() for k, v in net.state_dict().items()}
-                since_improvement = 0
-            else:
-                since_improvement += 1
-                if since_improvement >= patience:
-                    break
-
-        net.load_state_dict(best_state)
-        net.eval()
-        return cls(
-            standardiser=standardiser,
-            net=net,
-            target_scale=target_scale,
-            epochs_trained=completed,
-        )
-
-    def predict(self, features: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-        self.net.eval()
-        with torch.no_grad():
-            x = torch.tensor(self.standardiser.transform(features), dtype=torch.float32)
-            scaled = self.net(x).numpy().astype(np.float64)
-        return np.asarray(scaled * self.target_scale, dtype=np.float64)
-
-    def parameter_count(self) -> int:
-        return sum(p.numel() for p in self.net.parameters())
-
-    def save(self, path: Path) -> None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        torch.save(
-            {
-                "model_version": MODEL_VERSION,
-                "kind": "neural",
-                "state_dict": self.net.state_dict(),
-                "standardiser": self.standardiser.to_dict(),
-                "target_scale": self.target_scale.tolist(),
-                "epochs_trained": self.epochs_trained,
-            },
-            path,
-        )
-
-    @classmethod
-    def load(cls, path: Path) -> NeuralResidualModel:
-        # weights_only=True refuses to unpickle arbitrary objects. A checkpoint
-        # is data, and loading one should not be able to execute code -- this is
-        # the well-known torch.load deserialisation hazard.
-        payload = torch.load(path, weights_only=True)
-        net = _MLP()
-        net.load_state_dict(payload["state_dict"])
-        net.eval()
-        return cls(
-            standardiser=Standardiser.from_dict(payload["standardiser"]),
-            net=net,
-            target_scale=np.array(payload["target_scale"], dtype=np.float64),
-            epochs_trained=int(payload.get("epochs_trained", 0)),
-        )
+        return cls(standardiser=Standardiser.from_dict(payload["standardiser"]), model=ridge)

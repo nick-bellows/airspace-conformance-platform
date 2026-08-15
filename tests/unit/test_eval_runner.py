@@ -202,7 +202,7 @@ def test_the_evaluation_reproduces_and_stamps_its_inputs(tmp_path: Path) -> None
     """Runs the real harness end to end.
 
     Output goes to a temporary directory: a four-scenario smoke run must not
-    overwrite the committed result, which was produced from 122.
+    overwrite the committed result, which was produced from far more.
     """
     result = subprocess.run(  # noqa: S603
         [

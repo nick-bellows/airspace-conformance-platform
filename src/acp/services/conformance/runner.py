@@ -43,6 +43,12 @@ DEFAULT_SCAN_INTERVAL_S = 1.0
 #: aircraft whose position is half a minute stale is worse than not reasoning.
 STALE_TRACK_AFTER_S = 15.0
 
+#: How far ahead of the wall clock a message timestamp may be before it is
+#: treated as a bad clock rather than as replayed data. Generous, because a
+#: legitimate replay run races hours ahead; bounded, because the scan clock
+#: ratchets and a single absurd timestamp would otherwise poison it forever.
+MAX_DATA_CLOCK_LEAD = timedelta(days=1)
+
 
 @dataclass(frozen=True, slots=True)
 class ConformanceStats:
@@ -144,7 +150,14 @@ class ConformanceRunner:
         if existing is not None and update.updated_at < existing.updated_at:
             return
         self._picture[update.track_id] = update
-        if self._latest_seen is None or update.updated_at > self._latest_seen:
+        # Clamped, because this ratchets and never goes backwards. One upstream
+        # clock a year fast would otherwise pin the scan clock a year ahead
+        # permanently, marking every real track stale and emptying the picture
+        # for good. Under replay the feed legitimately runs ahead of the wall
+        # clock, so the bound is generous rather than exact.
+        if update.updated_at <= datetime.now(UTC) + MAX_DATA_CLOCK_LEAD and (
+            self._latest_seen is None or update.updated_at > self._latest_seen
+        ):
             self._latest_seen = update.updated_at
 
         # Conformance is checked per update, not per scan: the question is

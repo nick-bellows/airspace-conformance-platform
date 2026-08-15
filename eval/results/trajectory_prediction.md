@@ -1,6 +1,6 @@
 # Trajectory prediction evaluation
 
-Generated: 2026-08-15T18:38:42.783655+00:00
+Generated: 2026-08-15T20:14:46.150378+00:00
 
 | Component | Version |
 | --- | --- |
@@ -56,6 +56,14 @@ Winner on validation: **neural** (neural improved on ridge by +32.7%, threshold 
 | `ridge` | 0.6409 NM | 1.3739 NM | +36.3% | 4495 |
 | `neural` | 0.412 NM | 1.0971 NM | +59.1% | 4495 |
 
+95% confidence intervals from 400 bootstrap resamples over 30 **scenarios** (not samples — consecutive windows from one flight are near-duplicates, so the effective sample size is the number of flights):
+
+- `dead_reckoning` median 0.9614 to 1.0522 NM
+- `neural` median 0.3875 to 0.4472 NM
+- `ridge` median 0.6087 to 0.6771 NM
+
+Neural over ridge: +31.0% to +39.4%, so the improvement is distinguishable from zero.
+
 **Shifted family (different airspace)**
 
 | Model | Median | p90 | Skill vs dead reckoning | Samples |
@@ -65,6 +73,14 @@ Winner on validation: **neural** (neural improved on ridge by +32.7%, threshold 
 | `constant_turn` | 0.6045 NM | 1.6588 NM | +29.4% | 3830 |
 | `ridge` | 0.5189 NM | 1.3412 NM | +39.4% | 3830 |
 | `neural` | 0.4522 NM | 1.1205 NM | +47.2% | 3830 |
+
+95% confidence intervals from 400 bootstrap resamples over 40 **scenarios** (not samples — consecutive windows from one flight are near-duplicates, so the effective sample size is the number of flights):
+
+- `dead_reckoning` median 0.8091 to 0.8952 NM
+- `neural` median 0.4165 to 0.4871 NM
+- `ridge` median 0.4895 to 0.5481 NM
+
+Neural over ridge: +5.3% to +19.4%, so the improvement is distinguishable from zero.
 
 ### Climbing or descending — altitude error
 
@@ -102,6 +118,14 @@ Winner on validation: **neural** (neural improved on ridge by +23.5%, threshold 
 | `ridge` | 1.5253 NM | 3.8767 NM | +36.8% | 4495 |
 | `neural` | 1.2203 NM | 3.3817 NM | +49.4% | 4495 |
 
+95% confidence intervals from 400 bootstrap resamples over 30 **scenarios** (not samples — consecutive windows from one flight are near-duplicates, so the effective sample size is the number of flights):
+
+- `dead_reckoning` median 2.2447 to 2.5803 NM
+- `neural` median 1.1245 to 1.3251 NM
+- `ridge` median 1.4017 to 1.6449 NM
+
+Neural over ridge: +13.9% to +25.1%, so the improvement is distinguishable from zero.
+
 **Shifted family (different airspace)**
 
 | Model | Median | p90 | Skill vs dead reckoning | Samples |
@@ -111,6 +135,14 @@ Winner on validation: **neural** (neural improved on ridge by +23.5%, threshold 
 | `constant_turn` | 3.5407 NM | 6.9751 NM | -74.9% | 3830 |
 | `ridge` | 1.222 NM | 3.5839 NM | +39.6% | 3830 |
 | `neural` | 1.2608 NM | 3.1107 NM | +37.7% | 3830 |
+
+95% confidence intervals from 400 bootstrap resamples over 40 **scenarios** (not samples — consecutive windows from one flight are near-duplicates, so the effective sample size is the number of flights):
+
+- `dead_reckoning` median 1.9098 to 2.1596 NM
+- `neural` median 1.1657 to 1.3794 NM
+- `ridge` median 1.1333 to 1.3142 NM
+
+Neural over ridge: -12.7% to +5.5%, so **the improvement is not distinguishable from zero**.
 
 ### Climbing or descending — altitude error
 
@@ -148,6 +180,14 @@ Winner on validation: **neural** (neural improved on ridge by +17.6%, threshold 
 | `ridge` | 3.3148 NM | 9.603 NM | +34.8% | 4495 |
 | `neural` | 2.7318 NM | 8.3825 NM | +46.3% | 4495 |
 
+95% confidence intervals from 400 bootstrap resamples over 30 **scenarios** (not samples — consecutive windows from one flight are near-duplicates, so the effective sample size is the number of flights):
+
+- `dead_reckoning` median 4.6902 to 5.5222 NM
+- `neural` median 2.5176 to 2.9363 NM
+- `ridge` median 3.0083 to 3.6179 NM
+
+Neural over ridge: +11.5% to +23.0%, so the improvement is distinguishable from zero.
+
 **Shifted family (different airspace)**
 
 | Model | Median | p90 | Skill vs dead reckoning | Samples |
@@ -157,6 +197,14 @@ Winner on validation: **neural** (neural improved on ridge by +17.6%, threshold 
 | `constant_turn` | 13.1295 NM | 19.0421 NM | -213.2% | 3830 |
 | `ridge` | 2.6454 NM | 8.1028 NM | +36.9% | 3830 |
 | `neural` | 2.4804 NM | 6.6111 NM | +40.8% | 3830 |
+
+95% confidence intervals from 400 bootstrap resamples over 40 **scenarios** (not samples — consecutive windows from one flight are near-duplicates, so the effective sample size is the number of flights):
+
+- `dead_reckoning` median 3.9271 to 4.4981 NM
+- `neural` median 2.2624 to 2.6798 NM
+- `ridge` median 2.4511 to 2.8206 NM
+
+Neural over ridge: -1.0% to +13.4%, so **the improvement is not distinguishable from zero**.
 
 ### Climbing or descending — altitude error
 
@@ -198,10 +246,28 @@ and the model adds noise rather than removing it. It only earns its
 place vertically at 60 s and beyond. A deployment that cared about
 30 s altitude should use the baseline.
 
-**The neural network beats ridge, but not by enough to be obvious.**
-Both are trained on identical features and predict the same residual.
-The margin narrows as the horizon grows. If a deployment valued
-inspectability, shipping ridge would be defensible on these numbers.
+**The neural network's advantage over ridge does not survive
+distribution shift at longer horizons.** This is the most important
+finding in the report and it only became visible with confidence
+intervals.
+
+- **30s** on shifted traffic: +5.3% to +19.4%, distinguishable from zero
+- **60s** on shifted traffic: -12.7% to +5.5%, **not distinguishable from zero**
+- **120s** on shifted traffic: -1.0% to +13.4%, **not distinguishable from zero**
+
+Both models are trained on identical features and predict the same
+residual, and **both clearly beat dead reckoning everywhere** -- those
+intervals do not overlap at all. The question is only whether the extra
+capacity earns its place. On traffic resembling the training set it
+clearly does. On traffic that does not resemble it, at the horizons
+that matter most, the honest answer is that these data cannot tell the
+two apart.
+
+The shipped model is still the one validation chose, because selecting
+on the shift test would turn the shift test into a training signal and
+destroy the only out-of-distribution estimate available. But a
+deployment that valued inspectability over an advantage this uncertain
+would be right to ship ridge, and its weights are recorded below.
 
 ## What this does not measure
 

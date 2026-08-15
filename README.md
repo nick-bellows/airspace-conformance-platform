@@ -101,11 +101,20 @@ is hard — at a 60 s horizon:
 | Unseen scenarios, same family | 2.412 NM | **1.220 NM** | **+49.4%** | 4,495 |
 | Shifted family (different airspace) | 2.024 NM | **1.261 NM** | **+37.7%** | 3,830 |
 
-The gap between those rows is the cost of distribution shift, and it is the
-number worth arguing about. **In cruise and climb the model adds nothing**, because
-a straight line is already accurate to tens of metres — and at a 30 s horizon it
-makes *altitude* prediction worse than the baseline (31 ft → 98 ft), which the
-model card says outright.
+The gap between those rows is the cost of distribution shift. **In cruise and
+climb the model adds nothing**, because a straight line is already accurate to
+tens of metres — and at a 30 s horizon it makes *altitude* prediction worse than
+the baseline (31 ft → 98 ft), which the model card says outright.
+
+**Confidence intervals complicate the verdict, and that is the most interesting
+result here.** A scenario-clustered bootstrap (400 resamples over 30 held-out
+scenarios — consecutive samples from one flight are near-duplicates, so the
+effective n is flights, not samples) shows the neural network's advantage over
+plain ridge regression is **not distinguishable from zero on shifted traffic at
+60 s (−12.7% to +5.5%) or 120 s (−1.0% to +13.4%)**. Both models still beat dead
+reckoning decisively. What is uncertain is whether the extra capacity earns its
+place away from the training distribution — and on this evidence, shipping the
+linear model would be defensible.
 
 All caveats are in [`docs/limitations.md`](docs/limitations.md). The short
 version: simulated aircraft hold heading and speed exactly, there is no wind, and

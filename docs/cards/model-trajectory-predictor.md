@@ -60,22 +60,51 @@ collapse, which is the useful finding.
   place vertically only at 60 s (563 → 305 ft) and 120 s (1,828 → 450 ft). **A
   deployment that cared about 30 s altitude should use the baseline.**
 
-## Why a neural network rather than the linear model
+## Why a neural network rather than the linear model — and why that is arguable
 
 Both were trained on identical features against the same target. The winner is
 chosen on the validation split, on the turning stratum, and only if it beats
-ridge by at least 3%.
+ridge by at least 3%. Neural won at every horizon: +32.7% at 30 s, +23.5% at
+60 s, +17.6% at 120 s.
 
-Neural won at every horizon: +32.7% at 30 s, +23.5% at 60 s, +17.6% at 120 s. The
-margin narrows as the horizon grows. **If a deployment valued inspectability over
-that margin, shipping ridge would be defensible on these numbers** — the linear
-model's weights are readable and are recorded in the JSON report.
+**Confidence intervals change that story.** A scenario-clustered bootstrap — 400
+resamples over the 30 held-out *scenarios*, because consecutive windows from one
+flight are near-duplicates and the effective sample size is the number of
+flights, not the 4,495 samples — gives, for neural over ridge on **shifted**
+traffic:
+
+| Horizon | 95% interval | Verdict |
+| --- | --- | --- |
+| 30 s | +5.3% to +19.4% | distinguishable from zero |
+| 60 s | −12.7% to +5.5% | **not distinguishable** |
+| 120 s | −1.0% to +13.4% | **not distinguishable** |
+
+On traffic resembling the training set, neural clearly wins at every horizon. On
+traffic that does not, at the horizons that matter most, **these data cannot tell
+the two models apart.**
+
+Both still beat dead reckoning decisively everywhere — those intervals do not
+overlap at all. The uncertain part is only whether the extra capacity earns its
+place.
+
+**The shipped artifact is still the one validation chose**, because selecting on
+the shift test would turn the only out-of-distribution estimate into a training
+signal. But **a deployment that valued inspectability over an advantage this
+uncertain would be right to ship ridge**, and its weights are recorded in the
+JSON report so that argument can be had on evidence.
 
 ## How it fails
 
-- **No model artifact, corrupt artifact, or version mismatch** → the predictor
-  logs loudly and returns dead reckoning. The service starts and conflict
-  detection is unaffected.
+- **No model artifact, corrupt artifact, or a version stamp that does not match
+  this build** → the predictor logs loudly and returns dead reckoning. The
+  service starts and conflict detection is unaffected. The version check happens
+  on *load*, not only on save: an artifact trained under a different feature
+  order would otherwise load cleanly and predict confidently forever.
+- **PyTorch not installed at all** → same. Torch lives behind `acp.ml.neural`,
+  imported lazily, so an installation without the `ml` extra runs the service on
+  physics rather than failing to start. A CI job installs without that extra and
+  asserts the service imports, because this promise was false for a while: torch
+  was imported at module scope and the process died instead of degrading.
 - **Inference raises, or the output contains NaN or infinity** → dead reckoning,
   logged.
 - **Track shorter than the 20 s window** → dead reckoning.

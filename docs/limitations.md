@@ -128,6 +128,20 @@ From `eval/results/trajectory_prediction.md` and the
 - **Skill drops by about a quarter under distribution shift** (+49.4% → +37.7% at
   60 s). That is measured rather than assumed, and it is the cost of training on
   one traffic distribution and operating in another.
+- **The neural network's advantage over the linear model is not statistically
+  distinguishable on shifted traffic at 60 s or 120 s.** A scenario-clustered
+  bootstrap over the 30 held-out scenarios gives −12.7% to +5.5% at 60 s and
+  −1.0% to +13.4% at 120 s. Both models still beat dead reckoning decisively;
+  what is uncertain is whether the extra capacity earns its place away from the
+  training distribution. Shipping ridge would be defensible on these numbers.
+- **The point estimates alone are misleading about precision.** 4,495 turning
+  samples sounds like a large n, but consecutive samples are the same
+  twenty-second window shifted by a second. The effective sample size is closer
+  to the 30 scenarios, which is why every interval above is scenario-clustered.
+- **Early stopping and model selection share one validation split**, so the
+  reported validation figures carry a mild winner's curse. The test splits are
+  untouched by either, so the headline numbers are unaffected — but a separate
+  inner split for early stopping would be cleaner.
 - **Simulated aircraft hold heading and speed exactly.** No wind, no turbulence,
   no variation between autopilots or crews. Real 60-second prediction error is
   substantially larger than anything reported here and **the size of that gap is
@@ -143,10 +157,13 @@ From `eval/results/trajectory_prediction.md` and the
 - **The threshold factor has never been swept.** 3.0 is a judgement call, and
   there is no precision/recall curve for non-conformance alerts. The
   conflict detector has one; this does not, and that asymmetry is a gap.
-- **Calibration constants are copied from the evaluation report by hand.**
-  Retraining a more accurate model without updating `TYPICAL_MODEL_ERROR_NM`
-  would make the monitor progressively less sensitive with nothing to indicate
-  it.
+- **Thresholds are global constants per horizon, not per-prediction
+  uncertainty.** They are calibrated to the *typical* turning error, so they are
+  loose exactly where prediction is hardest and tight where it is easy. The
+  principled fix is the same one the conflict detector needs: predict a
+  distribution rather than a point — a quantile head via pinball loss, or a small
+  ensemble — and threshold on probability. **This is the highest-value ML work
+  remaining in the project** and it is not done.
 - **A non-conformance alert cannot mean what an operator will read into it.** It
   says the aircraft did not do what *our model* predicted. Without flight plans
   or clearances, a perfectly normal turn onto a cleared heading is
@@ -164,6 +181,13 @@ From `eval/results/trajectory_prediction.md` and the
 - **No dead-letter queue.** A message that fails validation is logged and
   skipped so one bad record cannot stall the airspace picture, but it is then
   gone. A production deployment would route it somewhere.
+- **The tracker commits Kafka offsets before its batched database flush.** A
+  hard kill in between loses up to one flush interval — a second, or fifty
+  updates — of track *history*, with no redelivery to recover it. The live
+  picture is unaffected because it is rebuilt from the next report. The
+  shutdown path flushes deliberately; only an uncatchable signal loses data.
+  Fixing it properly means an outbox table, which is real work for a bounded
+  loss of historical rows.
 - **Two services share a database schema** ([ADR 0004](adr/0004-shared-read-model-between-tracker-and-api.md)),
   which is a recognised coupling. Tolerable here because exactly one service
   writes.
