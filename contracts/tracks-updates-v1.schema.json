@@ -1,0 +1,162 @@
+{
+  "$defs": {
+    "DataSource": {
+      "description": "Provenance of a message.\n\nEvery message declares where it came from. There is currently one value; it\nexists so that a synthetic record can never be mistaken for a real one if a\nlive feed is ever added.",
+      "enum": [
+        "simulator"
+      ],
+      "title": "DataSource",
+      "type": "string"
+    },
+    "TrackState": {
+      "description": "Lifecycle of a track inside the tracker.",
+      "enum": [
+        "initiating",
+        "confirmed",
+        "coasting",
+        "terminated"
+      ],
+      "title": "TrackState",
+      "type": "string"
+    }
+  },
+  "$id": "https://airspace-conformance-platform.invalid/contracts/tracks.updates.v1",
+  "additionalProperties": false,
+  "description": "A filtered state estimate for one aircraft.\n\nUnlike :class:`SurveillanceReport` the kinematic fields are always present:\nthe filter always has an estimate, even while coasting through a dropout.\n``position_uncertainty_m`` is how much to trust it.",
+  "properties": {
+    "altitude_ft": {
+      "title": "Altitude Ft",
+      "type": "number"
+    },
+    "callsign": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Callsign"
+    },
+    "ground_speed_kt": {
+      "minimum": 0.0,
+      "title": "Ground Speed Kt",
+      "type": "number"
+    },
+    "icao24": {
+      "pattern": "^[0-9a-f]{6}$",
+      "title": "Icao24",
+      "type": "string"
+    },
+    "last_report_at": {
+      "format": "date-time",
+      "title": "Last Report At",
+      "type": "string"
+    },
+    "lat": {
+      "maximum": 90.0,
+      "minimum": -90.0,
+      "title": "Lat",
+      "type": "number"
+    },
+    "lon": {
+      "maximum": 180.0,
+      "minimum": -180.0,
+      "title": "Lon",
+      "type": "number"
+    },
+    "position_uncertainty_m": {
+      "minimum": 0.0,
+      "title": "Position Uncertainty M",
+      "type": "number"
+    },
+    "scenario_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scenario Id"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/DataSource",
+      "default": "simulator"
+    },
+    "squawk": {
+      "anyOf": [
+        {
+          "pattern": "^[0-7]{4}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Squawk"
+    },
+    "state": {
+      "$ref": "#/$defs/TrackState"
+    },
+    "track_deg": {
+      "exclusiveMaximum": 360.0,
+      "minimum": 0.0,
+      "title": "Track Deg",
+      "type": "number"
+    },
+    "track_id": {
+      "title": "Track Id",
+      "type": "string"
+    },
+    "turn_rate_deg_s": {
+      "title": "Turn Rate Deg S",
+      "type": "number"
+    },
+    "update_count": {
+      "minimum": 0,
+      "title": "Update Count",
+      "type": "integer"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    },
+    "vertical_rate_fpm": {
+      "title": "Vertical Rate Fpm",
+      "type": "number"
+    }
+  },
+  "required": [
+    "track_id",
+    "icao24",
+    "updated_at",
+    "last_report_at",
+    "state",
+    "lat",
+    "lon",
+    "altitude_ft",
+    "ground_speed_kt",
+    "track_deg",
+    "vertical_rate_fpm",
+    "turn_rate_deg_s",
+    "position_uncertainty_m",
+    "update_count"
+  ],
+  "title": "TrackUpdate",
+  "type": "object",
+  "x-contracts-version": "acp-contracts-v1",
+  "x-topic": "tracks.updates.v1"
+}

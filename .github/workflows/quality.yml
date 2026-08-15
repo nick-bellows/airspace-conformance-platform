@@ -1,0 +1,89 @@
+# Quality gate. Mirrors `scripts/run_checks.ps1` exactly -- if the local script
+# passes, this should too.
+#
+# Jobs are split rather than chained into one so a failure names itself in the
+# checks list: "types" failing is a different signal from "contracts" failing.
+# Security scanning, image build/publish, integration, e2e, kind, and the
+# latency budget arrive at M5; the README milestone list says so.
+
+name: quality
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  lint:
+    name: lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: ruff check src tests scripts eval conftest.py
+      - run: ruff format --check src tests scripts eval conftest.py
+
+  types:
+    name: types (mypy strict)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: mypy src
+
+  unit:
+    name: unit + contract tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/unit tests/contract --cov=acp --cov-report=term-missing --cov-report=xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
+
+  contracts:
+    name: contract schema drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      - run: pip install -e ".[dev]"
+      # Fails if a wire model changed without the committed schema being
+      # regenerated. This is the gate that stops a producer silently breaking
+      # a consumer, and it is deliberately its own check so the failure is
+      # unmistakable in the checks list.
+      - run: python scripts/contracts.py --check
+
+  compose-config:
+    name: compose config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Cheap syntax and reference check on the dev stack. The real stack comes
+      # up under the e2e job at M4.
+      - run: docker compose -f deploy/compose.yml config --quiet

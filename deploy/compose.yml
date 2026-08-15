@@ -1,0 +1,86 @@
+# Local development stack: the infrastructure the four services talk to.
+#
+# The application services join this file at M1. Everything here binds to
+# 127.0.0.1 only -- these are development containers with development
+# credentials and must not be reachable from the network.
+#
+# Image tags are pinned to exact versions. "latest" would make a green CI run
+# unreproducible a week later, which defeats the point of having one.
+
+name: acp
+
+services:
+  # Kafka API without the ZooKeeper/KRaft ceremony: one binary, one container.
+  # Everything the services use is plain Kafka protocol, so this is swappable
+  # for Amazon MSK or a Confluent cluster without touching application code.
+  redpanda:
+    image: redpandadata/redpanda:v26.1.16
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      - --default-log-level=warn
+      # Two listeners: containers reach the broker as `redpanda:9092`, while a
+      # developer on the host reaches it as `localhost:19092`. Advertised
+      # addresses must match how each client connects or the client will be
+      # redirected to a hostname it cannot resolve.
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "127.0.0.1:19092:19092"
+      - "127.0.0.1:9644:9644" # admin API, used by the healthcheck
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy:.*true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  postgres:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_USER: acp
+      POSTGRES_PASSWORD: acp # development-only credential; never used outside this file
+      POSTGRES_DB: acp
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U acp -d acp"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Holds the current airspace picture: one hash per live track, TTL-expired so
+  # a stale track disappears on its own if the tracker dies.
+  redis:
+    image: redis:8.10
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "127.0.0.1:6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Opt-in web UI for inspecting topics during a demo:
+  #   docker compose -f deploy/compose.yml --profile tools up -d
+  redpanda-console:
+    image: redpandadata/console:v3.4.0
+    profiles: ["tools"]
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+volumes:
+  redpanda-data:
+  postgres-data:

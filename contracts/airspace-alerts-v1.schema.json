@@ -1,0 +1,244 @@
+{
+  "$defs": {
+    "AlertKind": {
+      "description": "What kind of condition was detected.",
+      "enum": [
+        "predicted_conflict",
+        "non_conformance",
+        "emergency_squawk",
+        "excessive_descent"
+      ],
+      "title": "AlertKind",
+      "type": "string"
+    },
+    "AlertState": {
+      "description": "Alert lifecycle, used to suppress flapping.\n\nAn alert is raised once as ``NEW``, re-published as ``SUSTAINED`` while the\ncondition persists, and closed as ``CLEARED``. Consumers key on\n``alert_key`` and keep only the latest state.",
+      "enum": [
+        "new",
+        "sustained",
+        "cleared"
+      ],
+      "title": "AlertState",
+      "type": "string"
+    },
+    "ConflictEvidence": {
+      "additionalProperties": false,
+      "description": "Geometry behind a predicted loss of separation.\n\nDistances are the *predicted minimum* over the lookahead window, not the\ncurrent separation.",
+      "properties": {
+        "horizontal_standard_nm": {
+          "exclusiveMinimum": 0.0,
+          "title": "Horizontal Standard Nm",
+          "type": "number"
+        },
+        "lookahead_s": {
+          "exclusiveMinimum": 0.0,
+          "title": "Lookahead S",
+          "type": "number"
+        },
+        "min_horizontal_sep_nm": {
+          "minimum": 0.0,
+          "title": "Min Horizontal Sep Nm",
+          "type": "number"
+        },
+        "min_vertical_sep_ft": {
+          "minimum": 0.0,
+          "title": "Min Vertical Sep Ft",
+          "type": "number"
+        },
+        "time_to_cpa_s": {
+          "title": "Time To Cpa S",
+          "type": "number"
+        },
+        "vertical_standard_ft": {
+          "exclusiveMinimum": 0.0,
+          "title": "Vertical Standard Ft",
+          "type": "number"
+        }
+      },
+      "required": [
+        "time_to_cpa_s",
+        "min_horizontal_sep_nm",
+        "min_vertical_sep_ft",
+        "lookahead_s",
+        "horizontal_standard_nm",
+        "vertical_standard_ft"
+      ],
+      "title": "ConflictEvidence",
+      "type": "object"
+    },
+    "ConformanceEvidence": {
+      "additionalProperties": false,
+      "description": "How far an aircraft diverged from where it was predicted to be.",
+      "properties": {
+        "baseline_error_nm": {
+          "minimum": 0.0,
+          "title": "Baseline Error Nm",
+          "type": "number"
+        },
+        "error_nm": {
+          "minimum": 0.0,
+          "title": "Error Nm",
+          "type": "number"
+        },
+        "horizon_s": {
+          "exclusiveMinimum": 0.0,
+          "title": "Horizon S",
+          "type": "number"
+        },
+        "predicted_at": {
+          "format": "date-time",
+          "title": "Predicted At",
+          "type": "string"
+        },
+        "predictor_version": {
+          "title": "Predictor Version",
+          "type": "string"
+        },
+        "threshold_nm": {
+          "exclusiveMinimum": 0.0,
+          "title": "Threshold Nm",
+          "type": "number"
+        }
+      },
+      "required": [
+        "predicted_at",
+        "horizon_s",
+        "error_nm",
+        "baseline_error_nm",
+        "threshold_nm",
+        "predictor_version"
+      ],
+      "title": "ConformanceEvidence",
+      "type": "object"
+    },
+    "DataSource": {
+      "description": "Provenance of a message.\n\nEvery message declares where it came from. There is currently one value; it\nexists so that a synthetic record can never be mistaken for a real one if a\nlive feed is ever added.",
+      "enum": [
+        "simulator"
+      ],
+      "title": "DataSource",
+      "type": "string"
+    },
+    "Severity": {
+      "description": "Advisory severity. This system never issues a control instruction.",
+      "enum": [
+        "info",
+        "advisory",
+        "caution",
+        "warning"
+      ],
+      "title": "Severity",
+      "type": "string"
+    }
+  },
+  "$id": "https://airspace-conformance-platform.invalid/contracts/airspace.alerts.v1",
+  "additionalProperties": false,
+  "description": "An advisory raised by the conformance service.\n\n``reason_codes`` carries machine-readable justifications so an alert is\nalways explainable without re-running the detector.",
+  "properties": {
+    "alert_id": {
+      "title": "Alert Id",
+      "type": "string"
+    },
+    "alert_key": {
+      "title": "Alert Key",
+      "type": "string"
+    },
+    "conflict": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ConflictEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "conformance": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ConformanceEvidence"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "kind": {
+      "$ref": "#/$defs/AlertKind"
+    },
+    "raised_at": {
+      "format": "date-time",
+      "title": "Raised At",
+      "type": "string"
+    },
+    "reason_codes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "scenario_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scenario Id"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "severity": {
+      "$ref": "#/$defs/Severity"
+    },
+    "source": {
+      "$ref": "#/$defs/DataSource",
+      "default": "simulator"
+    },
+    "state": {
+      "$ref": "#/$defs/AlertState"
+    },
+    "summary": {
+      "title": "Summary",
+      "type": "string"
+    },
+    "track_ids": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Track Ids",
+      "type": "array"
+    },
+    "updated_at": {
+      "format": "date-time",
+      "title": "Updated At",
+      "type": "string"
+    }
+  },
+  "required": [
+    "alert_id",
+    "alert_key",
+    "kind",
+    "severity",
+    "state",
+    "raised_at",
+    "updated_at",
+    "track_ids",
+    "reason_codes",
+    "summary"
+  ],
+  "title": "Alert",
+  "type": "object",
+  "x-contracts-version": "acp-contracts-v1",
+  "x-topic": "airspace.alerts.v1"
+}

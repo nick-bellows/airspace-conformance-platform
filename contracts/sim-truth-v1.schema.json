@@ -1,0 +1,83 @@
+{
+  "$id": "https://airspace-conformance-platform.invalid/contracts/sim.truth.v1",
+  "additionalProperties": false,
+  "description": "Noiseless simulator state, published for evaluation only.\n\nNo production code path consumes this topic. It exists so the conflict\ndetector can be scored against ground truth it never sees, which is what\nmakes those metrics meaningful despite the data being synthetic.",
+  "properties": {
+    "altitude_ft": {
+      "title": "Altitude Ft",
+      "type": "number"
+    },
+    "ground_speed_kt": {
+      "minimum": 0.0,
+      "title": "Ground Speed Kt",
+      "type": "number"
+    },
+    "icao24": {
+      "pattern": "^[0-9a-f]{6}$",
+      "title": "Icao24",
+      "type": "string"
+    },
+    "lat": {
+      "maximum": 90.0,
+      "minimum": -90.0,
+      "title": "Lat",
+      "type": "number"
+    },
+    "lon": {
+      "maximum": 180.0,
+      "minimum": -180.0,
+      "title": "Lon",
+      "type": "number"
+    },
+    "phase": {
+      "title": "Phase",
+      "type": "string"
+    },
+    "scenario_id": {
+      "title": "Scenario Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "sim_version": {
+      "title": "Sim Version",
+      "type": "string"
+    },
+    "track_deg": {
+      "exclusiveMaximum": 360.0,
+      "minimum": 0.0,
+      "title": "Track Deg",
+      "type": "number"
+    },
+    "valid_at": {
+      "format": "date-time",
+      "title": "Valid At",
+      "type": "string"
+    },
+    "vertical_rate_fpm": {
+      "title": "Vertical Rate Fpm",
+      "type": "number"
+    }
+  },
+  "required": [
+    "icao24",
+    "scenario_id",
+    "sim_version",
+    "valid_at",
+    "lat",
+    "lon",
+    "altitude_ft",
+    "ground_speed_kt",
+    "track_deg",
+    "vertical_rate_fpm",
+    "phase"
+  ],
+  "title": "TruthState",
+  "type": "object",
+  "x-contracts-version": "acp-contracts-v1",
+  "x-topic": "sim.truth.v1"
+}

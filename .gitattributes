@@ -1,0 +1,11 @@
+# Normalise to LF in the repository. Development happens on Windows but CI runs
+# on Linux and the images are Linux; a CRLF shebang or entrypoint fails there
+# with an error message that names the wrong problem.
+* text=auto eol=lf
+
+# PowerShell is the local developer tooling and stays CRLF on checkout.
+*.ps1 text eol=crlf
+
+*.png binary
+*.gif binary
+*.pt binary

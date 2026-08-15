@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "DataSource": {
+      "description": "Provenance of a message.\n\nEvery message declares where it came from. There is currently one value; it\nexists so that a synthetic record can never be mistaken for a real one if a\nlive feed is ever added.",
+      "enum": [
+        "simulator"
+      ],
+      "title": "DataSource",
+      "type": "string"
+    }
+  },
+  "$id": "https://airspace-conformance-platform.invalid/contracts/surveillance.reports.v1",
+  "additionalProperties": false,
+  "description": "One position report for one aircraft, as observed by the sensor layer.\n\nThis is the *noisy* view. Fields are optional wherever a real ADS-B message\nmay omit them, so downstream code cannot assume completeness.",
+  "properties": {
+    "altitude_baro_ft": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Altitude Baro Ft"
+    },
+    "callsign": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Callsign"
+    },
+    "ground_speed_kt": {
+      "anyOf": [
+        {
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Ground Speed Kt"
+    },
+    "icao24": {
+      "pattern": "^[0-9a-f]{6}$",
+      "title": "Icao24",
+      "type": "string"
+    },
+    "lat": {
+      "maximum": 90.0,
+      "minimum": -90.0,
+      "title": "Lat",
+      "type": "number"
+    },
+    "lon": {
+      "maximum": 180.0,
+      "minimum": -180.0,
+      "title": "Lon",
+      "type": "number"
+    },
+    "observed_at": {
+      "format": "date-time",
+      "title": "Observed At",
+      "type": "string"
+    },
+    "on_ground": {
+      "default": false,
+      "title": "On Ground",
+      "type": "boolean"
+    },
+    "report_id": {
+      "title": "Report Id",
+      "type": "string"
+    },
+    "scenario_id": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Scenario Id"
+    },
+    "schema_version": {
+      "const": "1",
+      "default": "1",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/DataSource",
+      "default": "simulator"
+    },
+    "squawk": {
+      "anyOf": [
+        {
+          "pattern": "^[0-7]{4}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Squawk"
+    },
+    "track_deg": {
+      "anyOf": [
+        {
+          "exclusiveMaximum": 360.0,
+          "minimum": 0.0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Track Deg"
+    },
+    "vertical_rate_fpm": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Vertical Rate Fpm"
+    }
+  },
+  "required": [
+    "report_id",
+    "icao24",
+    "observed_at",
+    "lat",
+    "lon"
+  ],
+  "title": "SurveillanceReport",
+  "type": "object",
+  "x-contracts-version": "acp-contracts-v1",
+  "x-topic": "surveillance.reports.v1"
+}
