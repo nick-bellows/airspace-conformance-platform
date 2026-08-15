@@ -57,6 +57,11 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str, separators=(",", ":"))
 
 
+def get_logger(name: str) -> logging.Logger:
+    """Module logger. A thin alias so modules do not import `logging` directly."""
+    return logging.getLogger(name)
+
+
 def configure_logging(service_name: str, level: str = "INFO") -> None:
     """Install the JSON formatter as the only root handler.
 

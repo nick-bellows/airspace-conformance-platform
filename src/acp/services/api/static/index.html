@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Airspace Conformance Platform</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>%F0%9F%9B%A9</text></svg>"
+    />
+  </head>
+  <body>
+    <header>
+      <h1>Airspace Conformance Platform</h1>
+      <div id="status" class="status">
+        <span class="pill" id="pill-link">connecting</span>
+        <span id="stat-tracks">0 tracks</span>
+        <span id="stat-updated">--:--:--</span>
+      </div>
+    </header>
+
+    <main>
+      <canvas id="scope"></canvas>
+      <aside id="panel">
+        <h2>Tracks</h2>
+        <ul id="track-list"></ul>
+        <p class="note">
+          Synthetic traffic. Advisory display only &mdash; not an air traffic
+          control system.
+        </p>
+      </aside>
+    </main>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

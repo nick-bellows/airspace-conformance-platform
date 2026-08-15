@@ -1,0 +1,47 @@
+# Six aircraft on well-separated cruise tracks. Nothing should ever alert.
+#
+# This is the false-positive control. A detector's precision is only meaningful
+# if it has been shown quiet traffic and stayed quiet; a scenario that contains
+# only conflicts can make any trigger-happy detector look perfect.
+
+scenario_id: quiet-cruise
+description: Six well-separated cruise tracks; the false-alarm control scenario.
+seed: 20260816
+duration_s: 900
+
+reference:
+  lat: 40.60
+  lon: -75.50
+
+sensor:
+  report_interval_s: 1.0
+  position_sigma_m: 30.0
+  altitude_sigma_ft: 25.0
+  speed_sigma_kt: 2.0
+  track_sigma_deg: 0.5
+  dropout_probability: 0.02
+
+aircraft:
+  - icao24: aa0001
+    callsign: QCR001
+    initial: { lat: 40.00, lon: -76.60, altitude_ft: 33000, ground_speed_kt: 440, track_deg: 90 }
+  - icao24: aa0002
+    callsign: QCR002
+    initial: { lat: 40.40, lon: -76.60, altitude_ft: 35000, ground_speed_kt: 455, track_deg: 90 }
+  - icao24: aa0003
+    callsign: QCR003
+    initial: { lat: 40.80, lon: -76.60, altitude_ft: 37000, ground_speed_kt: 430, track_deg: 90 }
+  - icao24: aa0004
+    callsign: QCR004
+    initial: { lat: 41.20, lon: -74.40, altitude_ft: 34000, ground_speed_kt: 445, track_deg: 270 }
+  - icao24: aa0005
+    callsign: QCR005
+    initial: { lat: 39.60, lon: -74.40, altitude_ft: 36000, ground_speed_kt: 460, track_deg: 270 }
+    # Enters part-way through, so the tracker's initiation path is exercised
+    # every run rather than only at startup.
+    entry_time_s: 120
+  - icao24: aa0006
+    callsign: QCR006
+    # Bearings are [0, 360), so due north is 0.
+    initial: { lat: 39.20, lon: -75.50, altitude_ft: 38000, ground_speed_kt: 420, track_deg: 0 }
+    entry_time_s: 240

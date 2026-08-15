@@ -1,0 +1,160 @@
+/* Plan-view display. Dark by necessity rather than fashion: a controller's
+   scope is dark so that low-contrast returns stay visible, and it makes the
+   screenshot legible. No external fonts or assets - the page must render with
+   no network beyond this origin. */
+
+:root {
+  --bg: #05080b;
+  --panel: #0b1218;
+  --grid: #14202a;
+  --ink: #d7e3ea;
+  --ink-dim: #6f8593;
+  --track: #3fd48b;
+  --track-stale: #d9a441;
+  --accent: #4aa8ff;
+  --rule: #1b2a35;
+  --mono: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--rule);
+  background: var(--panel);
+  flex: 0 0 auto;
+}
+
+h1 {
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin: 0;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  color: var(--ink-dim);
+}
+
+.pill {
+  padding: 0.15rem 0.55rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pill[data-state="live"] {
+  color: var(--track);
+  border-color: color-mix(in srgb, var(--track) 45%, transparent);
+}
+
+.pill[data-state="down"] {
+  color: #ff7a7a;
+  border-color: color-mix(in srgb, #ff7a7a 45%, transparent);
+}
+
+main {
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-columns: 1fr 22rem;
+  min-height: 0;
+}
+
+canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+aside {
+  border-left: 1px solid var(--rule);
+  background: var(--panel);
+  padding: 0.75rem 1rem;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+aside h2 {
+  font-size: 0.7rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+  margin: 0 0 0.6rem;
+}
+
+#track-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+#track-list li {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: 0.35rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.callsign {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.detail {
+  color: var(--ink-dim);
+  font-size: 0.78rem;
+}
+
+.state-coasting .callsign {
+  color: var(--track-stale);
+}
+
+.note {
+  margin-top: 1.25rem;
+  color: var(--ink-dim);
+  font-size: 0.72rem;
+  line-height: 1.5;
+  border-top: 1px solid var(--rule);
+  padding-top: 0.75rem;
+}
+
+@media (max-width: 820px) {
+  main {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 14rem;
+  }
+
+  aside {
+    border-left: none;
+    border-top: 1px solid var(--rule);
+  }
+}

@@ -1,13 +1,27 @@
-# Local development stack: the infrastructure the four services talk to.
+# Local development stack: infrastructure plus the four services.
 #
-# The application services join this file at M1. Everything here binds to
-# 127.0.0.1 only -- these are development containers with development
-# credentials and must not be reachable from the network.
+# Everything binds to 127.0.0.1 only -- these are development containers with
+# development credentials and must not be reachable from the network.
 #
 # Image tags are pinned to exact versions. "latest" would make a green CI run
 # unreproducible a week later, which defeats the point of having one.
+#
+#   docker compose -f deploy/compose.yml up -d --build
+#   open http://localhost:8000
 
 name: acp
+
+x-service-base: &service-base
+  build:
+    context: ..
+    dockerfile: Dockerfile
+  image: acp:dev
+  environment: &service-env
+    ACP_KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
+    ACP_POSTGRES_DSN: postgresql+asyncpg://acp:acp@postgres:5432/acp
+    ACP_REDIS_URL: redis://redis:6379/0
+    ACP_LOG_LEVEL: INFO
+  restart: unless-stopped
 
 services:
   # Kafka API without the ZooKeeper/KRaft ceremony: one binary, one container.
@@ -67,6 +81,68 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+
+  # ---------------------------------------------------------------------------
+  # Application services
+  # ---------------------------------------------------------------------------
+
+  # Runs the schema to head and exits. Everything that touches Postgres waits on
+  # it completing successfully, so no service can start against a stale schema.
+  migrate:
+    <<: *service-base
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  feed:
+    <<: *service-base
+    # `--loop` restarts the scenario when it ends so a demo left running does
+    # not quietly go empty after fifteen minutes.
+    command:
+      - acp-feed
+      - --scenario=${ACP_SCENARIO:-scenarios/head-on-conflict.yaml}
+      - --loop
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  track:
+    <<: *service-base
+    command: ["acp-track"]
+    depends_on:
+      redpanda:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+  api:
+    <<: *service-base
+    command: ["python", "-m", "acp.services.api.app"]
+    environment:
+      <<: *service-env
+      ACP_API_PORT: "8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    depends_on:
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request,sys;
+          sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/health',
+          timeout=2).status == 200 else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   # Opt-in web UI for inspecting topics during a demo:
   #   docker compose -f deploy/compose.yml --profile tools up -d

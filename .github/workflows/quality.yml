@@ -30,8 +30,8 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -e ".[dev]"
-      - run: ruff check src tests scripts eval conftest.py
-      - run: ruff format --check src tests scripts eval conftest.py
+      - run: ruff check src tests scripts migrations eval conftest.py
+      - run: ruff format --check src tests scripts migrations eval conftest.py
 
   types:
     name: types (mypy strict)
@@ -42,7 +42,9 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - run: pip install -e ".[dev]"
+      # Services are typed against their real clients, so the runtime extras
+      # have to be present or mypy checks against stubs that are not there.
+      - run: pip install -e ".[dev,messaging,storage,api]"
       - run: mypy src
 
   unit:
@@ -54,7 +56,7 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - run: pip install -e ".[dev]"
+      - run: pip install -e ".[dev,messaging,storage,api]"
       - run: pytest tests/unit tests/contract --cov=acp --cov-report=term-missing --cov-report=xml
       - uses: actions/upload-artifact@v4
         if: always()
@@ -79,11 +81,13 @@ jobs:
       # unmistakable in the checks list.
       - run: python scripts/contracts.py --check
 
-  compose-config:
-    name: compose config
+  compose:
+    name: compose config + image build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # Cheap syntax and reference check on the dev stack. The real stack comes
-      # up under the e2e job at M4.
+      # Syntax and reference check on the dev stack.
       - run: docker compose -f deploy/compose.yml config --quiet
+      # Proves the image still builds. Bringing the stack up and driving traffic
+      # through it is the e2e job at M4; this is the cheap half of that.
+      - run: docker build --tag acp:ci .
