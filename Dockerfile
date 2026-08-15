@@ -21,9 +21,12 @@ WORKDIR /build
 COPY pyproject.toml README.md ./
 COPY src ./src
 
+# CPU-only torch. The default wheel pulls the entire CUDA runtime -- roughly two
+# gigabytes of GPU libraries that would never be used on this stack.
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
-    && /opt/venv/bin/pip install ".[messaging,storage,api]"
+    && /opt/venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch \
+    && /opt/venv/bin/pip install ".[messaging,storage,api,ml]"
 
 
 FROM python:3.13-slim AS runtime
@@ -45,6 +48,10 @@ COPY --from=builder /opt/venv /opt/venv
 COPY --chown=acp:acp scenarios ./scenarios
 COPY --chown=acp:acp migrations ./migrations
 COPY --chown=acp:acp alembic.ini ./alembic.ini
+# Trained residual models. Small, committed, and loaded at startup by the
+# conformance service. Absent or corrupt, it falls back to dead reckoning and
+# logs that it did -- see docs/cards/model-trajectory-predictor.md.
+COPY --chown=acp:acp models ./models
 
 USER acp
 

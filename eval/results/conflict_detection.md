@@ -1,6 +1,6 @@
 # Conflict detection evaluation
 
-Generated: 2026-08-15T17:39:09.802022+00:00
+Generated: 2026-08-15T19:03:28.605636+00:00
 
 | Component | Version |
 | --- | --- |
@@ -12,9 +12,9 @@ Generated: 2026-08-15T17:39:09.802022+00:00
 | Input | Value |
 | --- | --- |
 | Scenario family | `nominal` |
-| Scenarios | 122 |
-| Simulated airspace time | 20.5 hours |
-| Scenario set SHA-256 (first 16) | `f18b7020b1b74cfe` |
+| Scenarios | 123 |
+| Simulated airspace time | 20.75 hours |
+| Scenario set SHA-256 (first 16) | `d7f7c5559189b760` |
 | Horizontal standard | 5.0 NM |
 | Vertical standard | 1000.0 ft |
 | Lookahead | 300.0 s |
@@ -29,7 +29,7 @@ Generated: 2026-08-15T17:39:09.802022+00:00
 | Alerts raised | 68 |
 | False alerts | 29 |
 | **Precision** | **0.5735** |
-| False alerts per airspace hour | 1.41 |
+| False alerts per airspace hour | 1.4 |
 | Median warning lead time | 249.0 s |
 | 10th percentile lead time | 146.0 s |
 | Lead time range | 81.0 - 316.0 s |
@@ -90,7 +90,7 @@ Three changes would improve it, in descending order of value:
    entirely. Unavailable here by construction -- the simulator's plans are never
    published -- and the largest single source of remaining error.
 
-**1.41 false alerts per airspace hour** is the number
+**1.4 false alerts per airspace hour** is the number
 to quote operationally: roughly one spurious alert per hour of traffic. That is
 too many for anyone to use, and improving it is the obvious next piece of work
 on this detector.
@@ -107,6 +107,5 @@ the airspace. See `docs/limitations.md`.
 ## Reproduce
 
 ```
-python eval/run_conflict_eval.py --scenarios 120 \
-    --family nominal --seed 20260815 --include-committed
+python eval/run_conflict_eval.py --scenarios 120 --family nominal --seed 20260815 --include-committed
 ```

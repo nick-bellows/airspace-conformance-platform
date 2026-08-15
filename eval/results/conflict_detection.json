@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-08-15T17:39:09.802022+00:00",
+  "generated_at": "2026-08-15T19:03:28.605636+00:00",
   "sim_version": "acp-sim-v2",
   "generator_version": "acp-gen-v1",
   "filter_version": "acp-kf-cv-v1",
   "detector_version": "acp-separation-v1",
   "family": "nominal",
   "seed": 20260815,
-  "scenario_set_sha256_16": "f18b7020b1b74cfe",
+  "scenario_set_sha256_16": "d7f7c5559189b760",
   "settings": {
     "horizontal_nm": 5.0,
     "vertical_ft": 1000.0,
@@ -14,15 +14,15 @@
     "seed": 20260815.0
   },
   "summary": {
-    "scenarios": 122,
-    "simulated_hours": 20.5,
+    "scenarios": 123,
+    "simulated_hours": 20.75,
     "truth_conflict_events": 39,
     "detected_events": 39,
     "recall": 1.0,
     "alerts_raised": 68,
     "false_alerts": 29,
     "precision": 0.5735,
-    "false_alerts_per_hour": 1.41,
+    "false_alerts_per_hour": 1.4,
     "lead_time_s": {
       "count": 39,
       "median": 249.0,

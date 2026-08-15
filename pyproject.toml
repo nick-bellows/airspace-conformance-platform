@@ -93,7 +93,7 @@ packages = ["acp"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["aiokafka.*"]
+module = ["aiokafka.*", "sklearn.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

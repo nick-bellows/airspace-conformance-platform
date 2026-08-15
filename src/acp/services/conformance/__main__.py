@@ -7,11 +7,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from pathlib import Path
 
 from acp.common.config import load_settings
 from acp.common.contracts import TOPIC_TRACK_UPDATES, TrackUpdate
 from acp.common.logging import configure_logging, get_logger
 from acp.common.messaging import MessagePublisher, MessageSubscriber
+from acp.ml.predictor import DEFAULT_MODELS_DIR, TrajectoryPredictor
+from acp.services.conformance.monitor import DEFAULT_HORIZON_S, ConformanceMonitor
 from acp.services.conformance.runner import DEFAULT_SCAN_INTERVAL_S, ConformanceRunner
 from acp.services.conformance.separation import SeparationMonitor
 from acp.storage.stores import LiveAlertStore
@@ -32,6 +35,23 @@ def build_parser() -> argparse.ArgumentParser:
         default=DEFAULT_SCAN_INTERVAL_S,
         help="how often to scan the airspace picture for conflicts",
     )
+    parser.add_argument(
+        "--conformance-horizon-s",
+        type=float,
+        default=DEFAULT_HORIZON_S,
+        help="how far ahead trajectories are predicted before being checked",
+    )
+    parser.add_argument(
+        "--no-conformance",
+        action="store_true",
+        help="disable trajectory conformance monitoring; conflict detection is unaffected",
+    )
+    parser.add_argument(
+        "--models-dir",
+        type=Path,
+        default=DEFAULT_MODELS_DIR,
+        help="where to look for the trained residual model",
+    )
     return parser
 
 
@@ -43,6 +63,22 @@ async def run(args: argparse.Namespace) -> None:
         lookahead_s=settings.conflict_lookahead_s,
     )
     alert_store = LiveAlertStore.from_url(settings.redis_url)
+
+    conformance = None
+    if not args.no_conformance:
+        predictor = TrajectoryPredictor(args.conformance_horizon_s, models_dir=args.models_dir)
+        conformance = ConformanceMonitor(predictor, horizon_s=args.conformance_horizon_s)
+        _log.info(
+            "conformance monitoring enabled",
+            extra={
+                "horizon_s": args.conformance_horizon_s,
+                "predictor": predictor.version,
+                # Logged explicitly so an operator can tell from the startup
+                # line alone whether the model actually loaded, rather than
+                # discovering weeks later that everything ran on physics.
+                "model_loaded": predictor.has_model,
+            },
+        )
 
     async with (
         MessageSubscriber(
@@ -74,6 +110,7 @@ async def run(args: argparse.Namespace) -> None:
                 publisher,
                 alert_store=alert_store,
                 monitor=monitor,
+                conformance=conformance,
                 scan_interval_s=args.scan_interval_s,
             ).run()
             _log.info("conformance stopped", extra={"alerts": stats.alerts_published})

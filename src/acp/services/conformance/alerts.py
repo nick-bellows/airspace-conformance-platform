@@ -34,6 +34,7 @@ from acp.common.contracts import (
     AlertKind,
     AlertState,
     ConflictEvidence,
+    ConformanceEvidence,
     DataSource,
     Severity,
 )
@@ -58,6 +59,7 @@ class Detection:
     reason_codes: tuple[str, ...]
     track_ids: tuple[str, ...]
     conflict: ConflictEvidence | None = None
+    conformance: ConformanceEvidence | None = None
     scenario_id: str | None = None
 
 
@@ -154,6 +156,7 @@ class AlertManager:
             reason_codes=detection.reason_codes,
             summary=summary,
             conflict=detection.conflict,
+            conformance=detection.conformance,
             source=DataSource.SIMULATOR,
             scenario_id=detection.scenario_id,
         )

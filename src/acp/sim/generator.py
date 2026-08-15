@@ -77,8 +77,20 @@ class FamilyParameters:
     miss_distance_nm: tuple[float, float] = (0.0, 12.0)
     #: Angle between the two tracks. 180 is head-on, 90 is a crossing.
     crossing_angle_deg: tuple[float, float] = (30.0, 180.0)
-    #: Probability that each aircraft is given a manoeuvre part-way through.
+    #: Probability that each aircraft of the staged pair manoeuvres part-way
+    #: through.
     manoeuvre_probability: float = 0.35
+    #: Probability that each *background* aircraft manoeuvres. Zero by default,
+    #: which is what the conflict-detection families use.
+    background_manoeuvre_probability: float = 0.0
+    #: How many manoeuvres a manoeuvring aircraft performs.
+    #:
+    #: The defaults of "background never manoeuvres" and "one manoeuvre" are
+    #: load-bearing: raising either changes the scenarios a seed produces, and
+    #: `eval/results/conflict_detection.md` was measured on the current NOMINAL
+    #: output. `tests/unit/test_generator.py` pins the NOMINAL fingerprint so a
+    #: change here cannot silently invalidate that report.
+    manoeuvres_per_aircraft: int = 1
     #: Vertical offset between the pair. Straddles the 1000 ft standard for the
     #: same reason the lateral offset straddles 5 NM.
     vertical_offset_ft: tuple[float, float] = (0.0, 1400.0)
@@ -88,16 +100,36 @@ class FamilyParameters:
 #: The default family: mid-altitude en-route traffic with occasional manoeuvres.
 NOMINAL = FamilyParameters(name="nominal")
 
-#: A deliberately different family for distribution-shift testing at M3: denser,
-#: faster, more manoeuvring, and using a different band of flight levels.
+#: Manoeuvre-rich traffic for training and evaluating the trajectory model.
+#:
+#: NOMINAL is the wrong shape for that job. It gives one manoeuvre to at most
+#: two aircraft per scenario, so a held-out set of five scenarios contained
+#: seventeen manoeuvring samples -- a number from which nothing can be
+#: concluded. Predicting straight-line flight is not a problem worth modelling;
+#: the data has to contain the case that is.
+TRAINING = FamilyParameters(
+    name="training",
+    background_aircraft=(4, 7),
+    manoeuvre_probability=0.95,
+    background_manoeuvre_probability=0.8,
+    manoeuvres_per_aircraft=3,
+    duration_s=900.0,
+)
+
+#: A deliberately different family for the distribution-shift test: other flight
+#: levels, a wider speed range, denser traffic, tighter crossing angles, and a
+#: different manoeuvre mix. Train on TRAINING, evaluate here, report the gap.
 SHIFTED = FamilyParameters(
     name="shifted",
-    background_aircraft=(4, 8),
+    background_aircraft=(5, 9),
     speed_kt=(300.0, 560.0),
     flight_levels=(240, 250, 260, 270, 280, 290, 400, 410),
     crossing_angle_deg=(15.0, 180.0),
-    manoeuvre_probability=0.7,
+    manoeuvre_probability=0.9,
+    background_manoeuvre_probability=0.7,
+    manoeuvres_per_aircraft=2,
     vertical_offset_ft=(0.0, 1800.0),
+    duration_s=900.0,
 )
 
 
@@ -193,7 +225,13 @@ def generate_encounter(index: int, seed: int, params: FamilyParameters = NOMINAL
 
 
 def _maybe_manoeuvre(
-    rng: random.Random, params: FamilyParameters, track_deg: float, level_ft: float, speed_kt: float
+    rng: random.Random,
+    params: FamilyParameters,
+    track_deg: float,
+    level_ft: float,
+    speed_kt: float,
+    *,
+    probability: float | None = None,
 ) -> tuple[Command, ...]:
     """Occasionally give an aircraft something to do mid-flight.
 
@@ -201,34 +239,49 @@ def _maybe_manoeuvre(
     intent, and intent is never published. From the pipeline's point of view the
     aircraft simply starts turning.
     """
-    if rng.random() >= params.manoeuvre_probability:
+    threshold = params.manoeuvre_probability if probability is None else probability
+    if rng.random() >= threshold:
         return ()
 
-    at_s = rng.uniform(60.0, 240.0)
+    commands = [_one_manoeuvre(rng, rng.uniform(60.0, 240.0), track_deg, level_ft, speed_kt)]
+
+    # Guarded so that a family leaving this at the default consumes exactly the
+    # random numbers it did before this parameter existed, and therefore still
+    # produces byte-identical scenarios.
+    if params.manoeuvres_per_aircraft > 1:
+        heading = track_deg
+        for index in range(1, params.manoeuvres_per_aircraft):
+            at_s = 60.0 + index * rng.uniform(150.0, 260.0)
+            command = _one_manoeuvre(rng, at_s, heading, level_ft, speed_kt)
+            if isinstance(command, TurnTo):
+                heading = command.heading_deg
+            commands.append(command)
+
+    return tuple(commands)
+
+
+def _one_manoeuvre(
+    rng: random.Random, at_s: float, track_deg: float, level_ft: float, speed_kt: float
+) -> Command:
+    """Pick a single manoeuvre: turn, level change, or speed change."""
     choice = rng.random()
     if choice < 0.45:
-        return (
-            TurnTo(
-                at_s=at_s,
-                heading_deg=normalize_bearing(track_deg + rng.uniform(-60.0, 60.0)),
-                rate_deg_s=rng.uniform(1.0, 3.0),
-            ),
+        return TurnTo(
+            at_s=at_s,
+            heading_deg=normalize_bearing(track_deg + rng.uniform(-60.0, 60.0)),
+            rate_deg_s=rng.uniform(1.0, 3.0),
         )
     if choice < 0.8:
         step = rng.choice((-2000.0, -1000.0, 1000.0, 2000.0))
-        return (
-            ClimbTo(
-                at_s=at_s,
-                altitude_ft=max(1000.0, min(45000.0, level_ft + step)),
-                rate_fpm=rng.uniform(800.0, 2200.0),
-            ),
-        )
-    return (
-        ChangeSpeed(
+        return ClimbTo(
             at_s=at_s,
-            ground_speed_kt=max(200.0, speed_kt + rng.uniform(-60.0, 60.0)),
-            acceleration_kt_s=rng.uniform(0.5, 2.0),
-        ),
+            altitude_ft=max(1000.0, min(45000.0, level_ft + step)),
+            rate_fpm=rng.uniform(800.0, 2200.0),
+        )
+    return ChangeSpeed(
+        at_s=at_s,
+        ground_speed_kt=max(200.0, speed_kt + rng.uniform(-60.0, 60.0)),
+        acceleration_kt_s=rng.uniform(0.5, 2.0),
     )
 
 
@@ -244,18 +297,41 @@ def _background(rng: random.Random, params: FamilyParameters, existing: int) -> 
     for i in range(count):
         bearing = rng.uniform(0.0, 359.0)
         lat, lon = destination_point(_CENTRE_LAT, _CENTRE_LON, bearing, rng.uniform(40.0, 120.0))
+        # Drawn here, before the kinematics, because that is the order the
+        # original inline construction used. Moving a draw is enough to change
+        # every scenario a seed produces -- which the NOMINAL fingerprint test
+        # caught when this loop was first refactored.
+        icao24 = _address(rng)
+        level_ft = rng.choice(params.flight_levels) * 100.0
+        speed_kt = rng.uniform(*params.speed_kt)
+        # Pointing away from the centre.
+        track_deg = normalize_bearing(bearing + rng.uniform(-45.0, 45.0))
+
+        plan: tuple[Command, ...] = ()
+        # Guarded so families that leave this at zero consume no extra random
+        # numbers and keep producing byte-identical scenarios.
+        if params.background_manoeuvre_probability > 0.0:
+            plan = _maybe_manoeuvre(
+                rng,
+                params,
+                track_deg,
+                level_ft,
+                speed_kt,
+                probability=params.background_manoeuvre_probability,
+            )
+
         specs.append(
             AircraftSpec(
-                icao24=_address(rng),
+                icao24=icao24,
                 callsign=f"BKG{existing + i:03d}",
                 initial=InitialState(
                     lat=lat,
                     lon=lon,
-                    altitude_ft=rng.choice(params.flight_levels) * 100.0,
-                    ground_speed_kt=rng.uniform(*params.speed_kt),
-                    # Pointing away from the centre.
-                    track_deg=normalize_bearing(bearing + rng.uniform(-45.0, 45.0)),
+                    altitude_ft=level_ft,
+                    ground_speed_kt=speed_kt,
+                    track_deg=track_deg,
                 ),
+                plan=plan,
             )
         )
     return specs

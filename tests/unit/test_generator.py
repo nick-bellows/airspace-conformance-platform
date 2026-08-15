@@ -12,11 +12,21 @@ the detector would never be shown a close pass it is supposed to ignore.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import UTC, datetime
+from pathlib import Path
 
 from acp.common.geodesy import haversine_nm
 from acp.sim.engine import Simulation
-from acp.sim.generator import NOMINAL, SHIFTED, generate_encounter, generate_family
+from acp.sim.generator import (
+    NOMINAL,
+    SHIFTED,
+    TRAINING,
+    generate_encounter,
+    generate_family,
+)
+from acp.sim.scenario import load_scenario
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -160,6 +170,65 @@ def test_shifted_scenarios_use_the_shifted_flight_levels() -> None:
 def test_shifted_scenarios_carry_the_family_name() -> None:
     assert "shifted" in generate_encounter(0, 1, SHIFTED).scenario_id
     assert "nominal" in generate_encounter(0, 1, NOMINAL).scenario_id
+
+
+def test_the_nominal_family_still_produces_the_scenarios_the_report_was_measured_on() -> None:
+    """Guards the committed conflict-detection result.
+
+    `eval/results/conflict_detection.md` records the SHA-256 of the scenario set
+    it scored. If a generator change alters what NOMINAL produces for that seed,
+    the committed numbers describe traffic that no longer exists and the report
+    is silently stale. This recomputes the fingerprint the same way the
+    evaluation does and compares it against the committed one.
+
+    If this fails, the correct response is to regenerate the report and bump
+    `GENERATOR_VERSION` -- not to update the constant below.
+    """
+    committed = json.loads(
+        (Path(__file__).resolve().parents[2] / "eval/results/conflict_detection.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    scenarios = generate_family(
+        committed["summary"]["generated_scenarios"], committed["seed"], NOMINAL
+    )
+    if committed["summary"]["included_committed"]:
+        scenario_dir = Path(__file__).resolve().parents[2] / "scenarios"
+        scenarios.extend(load_scenario(p) for p in sorted(scenario_dir.glob("*.yaml")))
+
+    digest = hashlib.sha256()
+    for scenario in scenarios:
+        digest.update(scenario.model_dump_json().encode())
+
+    assert digest.hexdigest()[:16] == committed["scenario_set_sha256_16"], (
+        "NOMINAL scenario generation has changed; eval/results/conflict_detection.md "
+        "no longer describes the traffic it claims to. Regenerate it and bump "
+        "GENERATOR_VERSION."
+    )
+
+
+def test_the_training_family_contains_enough_manoeuvres_to_learn_from() -> None:
+    """The reason TRAINING exists at all.
+
+    NOMINAL gives one manoeuvre to at most two aircraft per scenario, which left
+    a held-out set with seventeen manoeuvring samples. A model cannot be
+    evaluated on seventeen samples and neither can a baseline.
+    """
+    scenarios = generate_family(5, 20260815, TRAINING)
+    with_plans = [a for s in scenarios for a in s.aircraft if a.plan]
+    total_commands = sum(len(a.plan) for s in scenarios for a in s.aircraft)
+
+    assert len(with_plans) >= 20, "too few manoeuvring aircraft to train on"
+    assert total_commands >= 50
+
+
+def test_the_conflict_families_leave_background_traffic_alone() -> None:
+    """NOMINAL's background aircraft must stay unplanned, or its fingerprint
+    changes and the committed conflict report goes stale."""
+    for scenario in generate_family(5, 20260815, NOMINAL):
+        for aircraft in scenario.aircraft:
+            if aircraft.callsign.startswith("BKG"):
+                assert aircraft.plan == ()
 
 
 def test_a_family_returns_exactly_the_requested_count() -> None:

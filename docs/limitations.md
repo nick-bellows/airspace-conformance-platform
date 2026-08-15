@@ -114,6 +114,47 @@ only visible to someone who opens the report:
 
 ---
 
+## 4a. Known weaknesses in trajectory prediction
+
+From `eval/results/trajectory_prediction.md` and the
+[model card](cards/model-trajectory-predictor.md):
+
+- **The model is worse than the baseline at predicting altitude 30 s ahead** —
+  31 ft for dead reckoning against 98 ft. It only helps vertically at 60 s and
+  beyond. A deployment that cared about short-horizon altitude should use
+  physics.
+- **It adds nothing in cruise or climb horizontally**, where a straight line is
+  already accurate to tens of metres. All of the reported skill comes from turns.
+- **Skill drops by about a quarter under distribution shift** (+49.4% → +37.7% at
+  60 s). That is measured rather than assumed, and it is the cost of training on
+  one traffic distribution and operating in another.
+- **Simulated aircraft hold heading and speed exactly.** No wind, no turbulence,
+  no variation between autopilots or crews. Real 60-second prediction error is
+  substantially larger than anything reported here and **the size of that gap is
+  unmeasured**.
+- **The training family's manoeuvre density is unrealistic**, deliberately, so
+  that enough turning samples existed to measure anything. Proportions between
+  strata therefore say nothing about real airspace.
+- **The model has never seen a go-around, a holding pattern, a weather
+  deviation, or a diversion**, because the simulator cannot produce them.
+
+### Conformance monitoring
+
+- **The threshold factor has never been swept.** 3.0 is a judgement call, and
+  there is no precision/recall curve for non-conformance alerts. The
+  conflict detector has one; this does not, and that asymmetry is a gap.
+- **Calibration constants are copied from the evaluation report by hand.**
+  Retraining a more accurate model without updating `TYPICAL_MODEL_ERROR_NM`
+  would make the monitor progressively less sensitive with nothing to indicate
+  it.
+- **A non-conformance alert cannot mean what an operator will read into it.** It
+  says the aircraft did not do what *our model* predicted. Without flight plans
+  or clearances, a perfectly normal turn onto a cleared heading is
+  indistinguishable from an unexplained one. The alert text says so; that does
+  not guarantee it will be read that way.
+
+---
+
 ## 5. Scale and operations
 
 - **Track identity is simplified.** One track per aircraft address, permanently.
@@ -139,9 +180,15 @@ only visible to someone who opens the report:
 | Claim | Evidence | Caveat |
 | --- | --- | --- |
 | Conflict detection recall, precision, lead time | `eval/results/conflict_detection.md` | Synthetic traffic; unrealistic encounter rate |
+| Trajectory model halves turning error | `eval/results/trajectory_prediction.md` | Turning stratum only; aircraft fly exactly |
+| Skill survives distribution shift | Same report, `test_shifted` split | One shifted family, not a sweep |
+| The model degrades to physics on failure | `tests/unit/test_ml.py` | Covers missing, corrupt, NaN, and raising models |
+| Features cannot see simulator intent | `tests/unit/test_ml.py`, contract shape | Structural, not a runtime check |
+| Conformance monitoring detects a real divergence | `tests/unit/test_conformance_monitor.py`, live run | Threshold not swept |
 | The filter reduces position error | `tests/unit/test_kalman.py` | Against the simulator's noise model only |
 | Services do not import each other | `tests/unit/test_architecture.py` | Static import graph; says nothing about runtime coupling |
 | Idempotent writes under redelivery | `tests/unit/test_runners.py`, live database check | Not yet tested against real consumer restarts (M5) |
+| Committed reports match their inputs | `tests/unit/test_generator.py` fingerprint | Covers NOMINAL only |
 | End-to-end pipeline works | Manual verification, screenshots | Not yet automated (M4) |
 
 No metric appears in the README until its runner is committed and reproducible

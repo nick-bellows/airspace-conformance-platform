@@ -28,6 +28,7 @@ from acp.common.contracts import (
 from acp.common.logging import get_logger
 from acp.common.messaging import MessagePublisher, MessageSubscriber
 from acp.services.conformance.alerts import AlertManager, Detection
+from acp.services.conformance.monitor import ConformanceMonitor, NonConformance
 from acp.services.conformance.rules import check as check_rules
 from acp.services.conformance.separation import Conflict, SeparationMonitor
 from acp.storage.stores import LiveAlertStore
@@ -62,6 +63,7 @@ class ConformanceRunner:
         *,
         alert_store: LiveAlertStore | None = None,
         monitor: SeparationMonitor | None = None,
+        conformance: ConformanceMonitor | None = None,
         manager: AlertManager | None = None,
         scan_interval_s: float = DEFAULT_SCAN_INTERVAL_S,
         stale_after_s: float = STALE_TRACK_AFTER_S,
@@ -70,11 +72,16 @@ class ConformanceRunner:
         self._publisher = publisher
         self._alert_store = alert_store
         self._monitor = monitor or SeparationMonitor()
+        self._conformance = conformance
         self._manager = manager or AlertManager()
         self._scan_interval_s = scan_interval_s
         self._stale_after_s = stale_after_s
 
         self._picture: dict[str, TrackUpdate] = {}
+        #: Non-conformance findings seen since the last scan, latest per track.
+        #: Held rather than published immediately so that every alert in the
+        #: system goes through one lifecycle and one hysteresis policy.
+        self._pending_conformance: dict[str, NonConformance] = {}
         self._updates = 0
         self._scans = 0
         self._alerts = 0
@@ -140,6 +147,15 @@ class ConformanceRunner:
         if self._latest_seen is None or update.updated_at > self._latest_seen:
             self._latest_seen = update.updated_at
 
+        # Conformance is checked per update, not per scan: the question is
+        # whether *this* aircraft went where it was predicted to, which is
+        # answered the moment its next position arrives. Deferring it to the
+        # scan would add up to a scan interval of latency for no benefit.
+        if self._conformance is not None:
+            finding = self._conformance.observe(update)
+            if finding is not None:
+                self._pending_conformance[finding.key] = finding
+
     async def scan_now(self, now: datetime) -> list[str]:
         """Run one scan and publish whatever changed. Returns the alert keys."""
         self._scans += 1
@@ -162,8 +178,30 @@ class ConformanceRunner:
                 for finding in check_rules(track)
             )
 
+        detections.extend(
+            Detection(
+                key=finding.key,
+                kind=AlertKind.NON_CONFORMANCE,
+                severity=finding.severity,
+                summary=finding.summary,
+                reason_codes=finding.reason_codes,
+                track_ids=(finding.track_id,),
+                conformance=finding.as_evidence(),
+                scenario_id=(
+                    self._picture[finding.track_id].scenario_id
+                    if finding.track_id in self._picture
+                    else None
+                ),
+            )
+            for finding in self._pending_conformance.values()
+        )
+        self._pending_conformance.clear()
+
         alerts = self._manager.reconcile(detections, now)
         alerts.extend(self._manager.forget(vanished, now))
+
+        if self._conformance is not None and vanished:
+            self._conformance.forget(vanished)
 
         for alert in alerts:
             # Keyed by alert_key so every state change for one condition lands

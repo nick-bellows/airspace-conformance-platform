@@ -1,0 +1,70 @@
+# An aircraft that does something the model cannot see coming.
+#
+# ACP501 cruises east for four minutes, then turns 80 degrees left at a standard
+# rate and holds the new heading. Nothing in the observable data forecasts that
+# turn -- the plan is intent and intent is never published -- so a predictor
+# extrapolating from position reports will keep predicting due east for a full
+# horizon after the turn begins.
+#
+# This is the scenario that exercises conformance monitoring. Expect a
+# NON_CONFORMANCE advisory roughly a minute after the turn starts, once the
+# prediction made just before it matures and is compared against reality.
+#
+# The traffic is deliberately well separated so the conflict detector stays
+# quiet: this scenario is about prediction, and an unrelated conflict alert
+# would muddy what it demonstrates.
+
+scenario_id: unannounced-turn
+description: A cruising aircraft makes an unforecast 80 degree turn; separation is never at risk.
+seed: 20260817
+duration_s: 900
+
+reference:
+  lat: 40.60
+  lon: -75.50
+
+sensor:
+  report_interval_s: 1.0
+  position_sigma_m: 30.0
+  altitude_sigma_ft: 25.0
+  speed_sigma_kt: 2.0
+  track_sigma_deg: 0.5
+  dropout_probability: 0.02
+
+aircraft:
+  # The subject. Turns hard, twice, with nothing to announce it.
+  - icao24: c0ffee
+    callsign: ACP501
+    squawk: "2000"
+    initial:
+      lat: 40.60
+      lon: -76.60
+      altitude_ft: 33000
+      ground_speed_kt: 440
+      track_deg: 90
+    plan:
+      - { kind: turn_to, at_s: 240, heading_deg: 10, rate_deg_s: 3.0 }
+      - { kind: climb_to, at_s: 480, altitude_ft: 37000, rate_fpm: 1800 }
+      - { kind: turn_to, at_s: 660, heading_deg: 110, rate_deg_s: 2.0 }
+
+  # Well clear, and flying predictably. A control: this one should never
+  # produce a conformance advisory.
+  - icao24: beef01
+    callsign: ACP502
+    squawk: "2000"
+    initial:
+      lat: 39.40
+      lon: -76.60
+      altitude_ft: 35000
+      ground_speed_kt: 460
+      track_deg: 90
+
+  - icao24: beef02
+    callsign: ACP503
+    squawk: "2000"
+    initial:
+      lat: 41.80
+      lon: -74.40
+      altitude_ft: 39000
+      ground_speed_kt: 430
+      track_deg: 270

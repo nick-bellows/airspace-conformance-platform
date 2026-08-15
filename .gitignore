@@ -19,9 +19,17 @@ htmlcov/
 # Generated at runtime, never committed
 data/
 output/
-models/
-*.pt
 *.onnx
+
+# Trained model artifacts ARE committed. They are small (a few kilobytes), they
+# are derived entirely from this project's own synthetic data so there is no
+# licence question, and the conformance service needs one at runtime -- training
+# inside the image build would be slow and would produce a different artifact on
+# every build. Reproducibility comes from the seed and the versions stamped in
+# eval/results/trajectory_prediction.json, not from re-training.
+!models/
+!models/*.json
+!models/*.pt
 
 # Local environment
 .env
