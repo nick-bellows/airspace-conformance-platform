@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-08-15T19:03:28.605636+00:00",
+  "generated_at": "2026-08-16T19:29:54.046579+00:00",
   "sim_version": "acp-sim-v2",
   "generator_version": "acp-gen-v1",
   "filter_version": "acp-kf-cv-v1",
   "detector_version": "acp-separation-v1",
   "family": "nominal",
   "seed": 20260815,
-  "scenario_set_sha256_16": "d199e9e88936e353",
+  "scenario_set_sha256_16": "9c3989e981bd424b",
   "settings": {
     "horizontal_nm": 5.0,
     "vertical_ft": 1000.0,

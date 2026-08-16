@@ -41,7 +41,11 @@ it happens, so I have time to act.**
 - Given two aircraft on converging tracks, when predicted separation breaches
   5 NM laterally *and* 1000 ft vertically within the lookahead, an alert is
   raised naming both aircraft — ✅ `tests/e2e/test_pipeline.py`
-- Given a pair laterally close but 4,000 ft apart, no alert is raised — ✅ same
+- Given a pair laterally close but 4,000 ft apart, no alert is raised — ✅
+  `tests/unit/test_scenarios.py`, over the full encounter where they pass
+  within 0.2 NM. This criterion was marked met for a long time on a scenario
+  where the two aircraft never came within 18 NM of each other, so nothing was
+  actually being asked of the detector
 - Recall, precision, and median lead time are measured against simulator ground
   truth the detector never sees, and published — ✅ `eval/results/conflict_detection.md`
 - The alert states its predicted separation and time to closest approach — ✅

@@ -238,7 +238,7 @@ Then open <http://localhost:8000>.
 
 | Scenario | What to watch for | When |
 | --- | --- | --- |
-| `head-on-conflict` | Two aircraft ring red; a conflict advisory names them and counts down to closest approach. A third aircraft is laterally close but 4,000 ft above and is correctly ignored. | ~2½ min |
+| `head-on-conflict` | Two aircraft ring red; a conflict advisory names them and counts down to closest approach. A third crosses the same point at the same moment — 0.2 NM laterally — but 4,000 ft above, and is correctly ignored. | ~2½ min |
 | `unannounced-turn` | ACP501 turns 80° with nothing to forecast it; a conformance advisory appears once the earlier prediction matures, then clears. | turn at 4 min, alert ~4½ min |
 | `quiet-cruise` | Six well-separated aircraft and no alerts at all. The false-alarm control. | never |
 

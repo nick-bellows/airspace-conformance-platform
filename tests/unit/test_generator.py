@@ -180,8 +180,21 @@ def test_the_nominal_family_still_produces_the_scenarios_the_report_was_measured
     is silently stale. This recomputes the fingerprint the same way the
     evaluation does and compares it against the committed one.
 
-    If this fails, the correct response is to regenerate the report and bump
-    `GENERATOR_VERSION` -- not to update the constant below.
+    If this fails, regenerate the report -- never edit the committed
+    fingerprint to match. Whether to also bump `GENERATOR_VERSION` depends on
+    *which* input moved, and the fingerprint covers two:
+
+    - **The generator changed.** Bump it. The constant seeds the per-scenario
+      RNG, so a bump is itself a generation change and invalidates every
+      committed report, which is the point.
+    - **A committed scenario in `scenarios/` changed.** Do not bump it.
+      Generation is untouched and 120 unrelated scenarios would churn for
+      nothing. Regenerating updates the fingerprint on its own.
+
+    The second case is not hypothetical: `head-on-conflict.yaml` was edited to
+    move its vertically-separated aircraft into a real 0.2 NM near-pair, and
+    this test caught it. Every published metric came back identical -- the
+    detector was not fooled -- so only the fingerprint moved.
     """
     committed = json.loads(
         (Path(__file__).resolve().parents[2] / "eval/results/conflict_detection.json").read_text(

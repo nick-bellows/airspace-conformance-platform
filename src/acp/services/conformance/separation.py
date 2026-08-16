@@ -17,8 +17,10 @@ A conflict is declared when the predicted minimum breaches **both** standards at
 the same moment: less than 5 NM apart horizontally *and* less than 1000 ft
 vertically. Either alone is normal and legal. This is the single most common
 mistake in a naive implementation, and the `head-on-conflict` scenario contains
-an aircraft placed specifically to catch it: laterally close to the conflicting
-pair, but 4000 ft above.
+an aircraft placed specifically to catch it: it passes within 0.2 NM of the
+conflicting pair at the moment they meet, 4000 ft above. Deleting both vertical
+guards below makes the detector alert on it, which is what
+`tests/unit/test_scenarios.py` asserts against.
 
 ## Operating limit
 

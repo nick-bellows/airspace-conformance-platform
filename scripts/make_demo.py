@@ -51,6 +51,22 @@ MARGIN = 56
 TRAIL = 120  # seconds of history drawn behind each aircraft
 TRAIL_COLOUR = (38, 62, 82)
 
+# Candidate label positions relative to the marker, tried in order: right then
+# left, near then far. Four aircraft can meet at a point in this scenario, so
+# there are more slots than aircraft.
+LABEL_SLOTS = (
+    (12, -16),
+    (12, 8),
+    (-56, -16),
+    (-56, 8),
+    (12, -30),
+    (12, 22),
+)
+
+
+def _overlaps(a: tuple[float, float, float, float], b: tuple[float, float, float, float]) -> bool:
+    return not (a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1])
+
 
 @dataclass
 class Track:
@@ -83,7 +99,8 @@ def _draw_frame(
         draw.line([(WIDTH / 2 + offset * step, 0), (WIDTH / 2 + offset * step, HEIGHT)], GRID)
         draw.line([(0, HEIGHT / 2 + offset * step), (WIDTH, HEIGHT / 2 + offset * step)], GRID)
 
-    for index, track in enumerate(sorted(tracks.values(), key=lambda t: t.callsign)):
+    placed: list[tuple[float, float, float, float]] = []
+    for track in sorted(tracks.values(), key=lambda t: t.callsign):
         if not track.points:
             continue
         colour = RED if track.conflicted else BLUE
@@ -97,13 +114,22 @@ def _draw_frame(
         if track.conflicted:
             draw.ellipse([x - 14, y - 14, x + 14, y + 14], outline=RED, width=2)
         draw.ellipse([x - 4, y - 4, x + 4, y + 4], fill=colour)
-        # Alternate the label side so a converging pair stays readable through
-        # closest approach, which is exactly when the labels would collide.
-        dx, dy = (12, -16) if index % 2 == 0 else (12, 8)
-        # Clamp inside the frame so a label never runs under the alert banner
-        # or off the right edge -- both happen at the geometry that matters.
-        label_x = min(x + dx, WIDTH - 60)
-        label_y = min(max(y + dy, 6), HEIGHT - 74)
+        # Place the label in the first candidate slot that is not already
+        # taken. Alternating two slots by index was enough while only a
+        # converging *pair* met at a point; `head-on-conflict` now sends a
+        # third aircraft through the same point 4000 ft above -- the whole
+        # reason that aircraft exists -- and three labels in two slots overlap
+        # into an unreadable smear at exactly the frame worth screenshotting.
+        for dx, dy in LABEL_SLOTS:
+            # Clamp inside the frame so a label never runs under the alert
+            # banner or off the right edge -- both happen at the geometry that
+            # matters.
+            label_x = min(max(x + dx, 4), WIDTH - 60)
+            label_y = min(max(y + dy, 6), HEIGHT - 74)
+            box = (label_x, label_y, label_x + 44, label_y + 12)
+            if not any(_overlaps(box, taken) for taken in placed):
+                break
+        placed.append(box)
         draw.text((label_x, label_y), track.callsign, fill=colour)
 
     draw.text((MARGIN // 2, 14), "AIRSPACE CONFORMANCE PLATFORM", fill=DIM)

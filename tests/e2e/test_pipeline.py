@@ -210,10 +210,20 @@ def test_the_conflict_is_detected_before_separation_is_lost(stack: None) -> None
 
 
 def test_the_aircraft_flying_4000_feet_above_is_not_alerted_on(stack: None) -> None:
-    """The negative case the scenario exists to protect.
+    """The negative case the scenario exists to protect, through the real stack.
 
-    ACP303 crosses the same airspace laterally close but vertically clear. A
-    detector that forgot the altitude check would fire on it constantly.
+    ACP303 is 4000 ft above the conflicting pair and must never appear in an
+    alert. Note what this does *not* prove: the feed runs in real time and the
+    suite finishes shortly after the conflict alert at T+2:38, while ACP303 does
+    not reach the pair until T+7:58 -- so at this point it is still tens of
+    miles away and the altitude check has not yet been put under pressure.
+    Waiting eight minutes to find out would cost more CI time than the
+    guarantee is worth here.
+
+    `tests/unit/test_scenarios.py` runs the encounter to completion, where
+    ACP303 passes within 0.2 NM, and is where that guarantee actually lives.
+    What this test adds is that the whole pipeline -- broker, filter, detector,
+    API -- agrees, rather than just the detector in isolation.
     """
     alerts = api_get("/v1/alerts")["alerts"]
     involved = {track for alert in alerts for track in alert["track_ids"]}

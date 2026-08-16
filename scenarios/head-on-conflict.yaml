@@ -52,13 +52,21 @@ aircraft:
       track_deg: 270 # due west
 
   # --- traffic that must not raise an alert ---
-  # Crosses the same airspace but 4000 ft above: laterally close, vertically
-  # clear. A detector that ignores altitude will fire on this one.
+  # Crosses the same point as the conflicting pair, at the same moment, but
+  # 4000 ft above: laterally coincident, vertically clear. A detector that
+  # ignores altitude fires on this one.
+  #
+  # The timing is the whole point and it is load-bearing. This aircraft was
+  # originally 30 NM south, which put it over the crossing at t=257s -- 223
+  # seconds before the pair arrived -- so its closest lateral approach was
+  # 18.8 NM and it exercised nothing. At 420 kt it covers 56.0 NM in the 480 s
+  # the pair takes to close, so it starts 56 NM south to arrive together with
+  # them. `tests/unit/test_scenarios.py` pins the resulting geometry.
   - icao24: 0a1b2c
     callsign: ACP303
     squawk: "2000"
     initial:
-      lat: 40.10
+      lat: 39.66667 # 56 NM south of the crossing point at 40.60
       lon: -75.50
       altitude_ft: 39000
       ground_speed_kt: 420

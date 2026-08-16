@@ -216,6 +216,18 @@ same track. An aircraft would vanish from the display because someone added a
 replica. It was invisible to 500 passing tests because every one ran a single
 consumer. [ADR 0011](adr/0011-partition-ownership-is-state.md).
 
+**"Have you ever found a test that was passing for the wrong reason?"**
+Yes, and recently. The demo scenario carries an aircraft 4,000 ft above the
+conflicting pair, there to catch the most common mistake in this algorithm —
+treating one separation standard as sufficient when both must breach. Three
+tests and a source comment asserted it worked. I checked by deleting the
+altitude logic, and everything still passed: the aircraft had been placed on
+the right *point* but arrived 223 seconds early, so it never came within 18 NM
+and the control controlled nothing. Fixing the timing brings it to 0.2 NM, and
+deleting the altitude logic now fails — I confirmed that too. The published
+metrics came back byte-identical, which is the reassuring half: the detector
+was never fooled, the test just wasn't asking.
+
 **"What's your test strategy?"**
 Five levels, each catching something the others can't: unit and property tests
 for logic and invariants; contract tests for spec drift and schema
