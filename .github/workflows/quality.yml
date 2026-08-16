@@ -98,12 +98,17 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      # `api` as well as `dev`: `contracts.py --check` renders the OpenAPI
-      # document, which imports the FastAPI app. Installing only `dev` passed
-      # locally -- where the venv has everything -- and failed on the first CI
-      # run with ModuleNotFoundError. Same shape as the very first CI defect an
-      # external review found in this repository.
-      - run: pip install -e ".[dev,api]"
+      # `api` and `storage` as well as `dev`. `contracts.py --check` renders the
+      # OpenAPI document, which imports the FastAPI app, which reaches redis and
+      # sqlalchemy through the stream module -- the full closure is fastapi,
+      # uvicorn, redis, sqlalchemy, pydantic. `observability` is deliberately
+      # absent because those imports degrade to no-ops.
+      #
+      # Installing only `dev` passed locally -- where the venv has everything --
+      # and failed on the first CI run. Narrowing it to `dev,api` failed on the
+      # second, one import deeper. Both are the same mistake: guessing a closure
+      # instead of deriving it.
+      - run: pip install -e ".[dev,api,storage]"
       # Fails if a wire model changed without the committed schema being
       # regenerated. This is the gate that stops a producer silently breaking
       # a consumer, and it is deliberately its own check so the failure is
@@ -311,9 +316,18 @@ jobs:
       image-id: ${{ steps.build.outputs.image-id }}
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      # Retried once, for PyPI and not for us. The second run of this workflow
+      # failed here on `ConnectionResetError` fetching a wheel from
+      # files.pythonhosted.org, which also skipped the four jobs that consume
+      # the image. The build is deterministic apart from the network, so a real
+      # failure fails both attempts; a reset does not.
       - id: build
         run: |
-          docker build --tag acp:dev .
+          docker build --tag acp:dev . || {
+            echo "::warning::image build failed; retrying once in case it was the network"
+            sleep 15
+            docker build --tag acp:dev .
+          }
           echo "image-id=$(docker image inspect acp:dev --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
       - run: docker save acp:dev | gzip --fast > image.tar.gz
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

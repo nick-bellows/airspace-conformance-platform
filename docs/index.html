@@ -1,0 +1,365 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Airspace Conformance Platform</title>
+<meta name="description" content="Event-driven monitoring of simulated air traffic: four Kafka microservices turning noisy surveillance into smoothed tracks and advisory safety alerts. A portfolio project.">
+<style>
+  :root {
+    --ink: #05080b; --panel: #0b1218; --line: #14202a; --grid: #16242f;
+    --text: #d7e3ea; --dim: #6f8593; --blue: #4aa8ff; --amber: #e0a33a;
+    --red: #ff6b5e; --green: #3fd48b;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--ink); color: var(--text);
+    font: 16px/1.65 var(--sans); -webkit-font-smoothing: antialiased;
+  }
+  a { color: var(--blue); }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
+  header { padding: 56px 0 28px; border-bottom: 1px solid var(--line); }
+  h1 { margin: 0 0 6px; font-size: clamp(28px, 5vw, 42px); letter-spacing: -0.02em; }
+  .tag { color: var(--dim); font-family: var(--mono); font-size: 13px; letter-spacing: .04em; text-transform: uppercase; }
+  .lede { margin: 18px 0 0; font-size: clamp(17px, 2.4vw, 20px); max-width: 68ch; }
+  .badges { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 8px; }
+  .badge {
+    font-family: var(--mono); font-size: 12px; padding: 5px 10px;
+    border: 1px solid var(--line); border-radius: 999px; color: var(--dim);
+    text-decoration: none;
+  }
+  .badge:hover { border-color: var(--blue); color: var(--blue); }
+  .badge.cta { border-color: var(--blue); color: var(--blue); }
+  section { padding: 42px 0; border-bottom: 1px solid var(--line); }
+  h2 { font-size: 13px; font-family: var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); margin: 0 0 20px; font-weight: 600; }
+  h3 { font-size: 18px; margin: 26px 0 8px; }
+  p { max-width: 72ch; }
+  .note { color: var(--dim); font-size: 14px; }
+
+  /* Replay */
+  .stage { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  canvas { display: block; width: 100%; height: auto; background: var(--ink); }
+  .bar { display: flex; align-items: center; gap: 14px; padding: 10px 14px; border-top: 1px solid var(--line); font-family: var(--mono); font-size: 12px; color: var(--dim); flex-wrap: wrap; }
+  .bar button {
+    font: inherit; background: transparent; color: var(--text); border: 1px solid var(--line);
+    padding: 4px 12px; border-radius: 5px; cursor: pointer;
+  }
+  .bar button:hover { border-color: var(--blue); color: var(--blue); }
+  .alert { color: var(--amber); }
+  #scrub { flex: 1; min-width: 140px; accent-color: var(--blue); }
+
+  /* Tables */
+  table { border-collapse: collapse; width: 100%; font-size: 14.5px; margin: 6px 0 0; }
+  th, td { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--dim); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+  td.num { font-family: var(--mono); white-space: nowrap; }
+  .good { color: var(--green); } .warn { color: var(--amber); }
+
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 26px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .card h3 { margin-top: 0; }
+  .card p { font-size: 14.5px; color: var(--dim); margin-bottom: 0; }
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    padding: 14px 16px; overflow-x: auto; font-family: var(--mono); font-size: 13px; color: var(--text);
+  }
+  .callout { border-left: 2px solid var(--amber); padding: 2px 0 2px 16px; margin: 22px 0; color: var(--dim); }
+  .callout strong { color: var(--text); }
+  footer { padding: 34px 0 60px; color: var(--dim); font-size: 14px; }
+  ul { max-width: 72ch; } li { margin: 5px 0; }
+</style>
+</head>
+<body>
+
+<header><div class="wrap">
+  <div class="tag">Portfolio project &middot; synthetic data &middot; not an ATC system</div>
+  <h1>Airspace Conformance Platform</h1>
+  <p class="lede">
+    Four Python microservices connected by Kafka turn noisy simulated aircraft
+    position reports into smoothed tracks and advisory safety alerts: predicted
+    losses of separation, unmodelled manoeuvres, and emergency transponder codes.
+  </p>
+  <div class="badges">
+    <a class="badge cta" href="https://github.com/nick-bellows/airspace-conformance-platform">Source on GitHub</a>
+    <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/tree/main/docs/adr">11 ADRs</a>
+    <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/docs/limitations.md">Limitations</a>
+    <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/eval/results/conflict_detection.md">Evaluation</a>
+  </div>
+</div></header>
+
+<section><div class="wrap">
+  <h2>The system, replayed</h2>
+  <div class="stage">
+    <canvas id="view" width="1440" height="840" aria-label="Plan view of four simulated aircraft; two converge head-on and a predicted-conflict advisory fires."></canvas>
+    <div class="bar">
+      <button id="play" type="button">Pause</button>
+      <span id="clock">T+00:00</span>
+      <input id="scrub" type="range" min="0" max="0" value="0" aria-label="Scrub through the replay">
+      <span id="status">4 aircraft</span>
+    </div>
+  </div>
+  <p class="note" style="margin-top:14px">
+    Not a video and not a mock-up. This is a recorded run of the real simulator,
+    Kalman filter, and separation monitor, replayed in a canvas &mdash; the same
+    log that produces the animation in the README, generated by
+    <a href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/scripts/make_demo.py"><code>scripts/make_demo.py</code></a>.
+    Two aircraft converge head-on at FL350; the advisory fires about five minutes
+    before closest approach. The other two are there so the detector has traffic
+    to <em>not</em> alert on.
+  </p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Results</h2>
+  <h3>Conflict detection</h3>
+  <p>
+    Scored against simulator ground truth the detector never sees, while consuming
+    only the noisy observation stream. The traffic is invented; the measurement is not.
+  </p>
+  <table>
+    <tr><th>Metric</th><th>Value</th><th>Reading</th></tr>
+    <tr><td>Recall</td><td class="num good">1.00</td><td class="note">Every real loss of separation was alerted before it happened &mdash; on encounters that are mostly constant-velocity, which is exactly what the detector assumes</td></tr>
+    <tr><td>Precision</td><td class="num warn">0.57</td><td class="note">Two in five alerts concern a pair that never loses separation. Not good enough, and the reason is known</td></tr>
+    <tr><td>Median warning</td><td class="num">249 s</td><td class="note">Just over four minutes of lead time</td></tr>
+    <tr><td>Sample</td><td class="num">123 scenarios / 20.75 h</td><td class="note">39 real losses of separation</td></tr>
+  </table>
+  <div class="callout">
+    <strong>Precision of 0.57 is the honest result.</strong> The detector thresholds a
+    point estimate: a predicted 4.9 NM miss alerts, 5.1 NM does not, and the
+    velocity estimate behind that prediction carries enough noise to move the
+    answer across the line. The principled fix is probabilistic detection using
+    the covariance the Kalman filter already maintains &mdash; and it is the one
+    thing worth building next.
+  </div>
+
+  <h3>Trajectory prediction</h3>
+  <p>
+    A PyTorch model predicting the <em>residual</em> of dead reckoning, not the
+    position. Horizontal error while turning, at a 60&nbsp;s horizon:
+  </p>
+  <table>
+    <tr><th>Split</th><th>Dead reckoning</th><th>Neural</th><th>Skill</th></tr>
+    <tr><td>Unseen scenarios, same family</td><td class="num">2.412 NM</td><td class="num good">1.220 NM</td><td class="num good">+49.4%</td></tr>
+    <tr><td>Shifted family</td><td class="num">2.024 NM</td><td class="num good">1.261 NM</td><td class="num good">+37.7%</td></tr>
+  </table>
+  <div class="callout">
+    <strong>The neural net is not distinguishable from ridge regression on shifted
+    traffic.</strong> A scenario-clustered bootstrap gives &minus;12.7% to +5.5% at
+    60&nbsp;s. Both beat dead reckoning decisively; what is uncertain is whether the
+    extra capacity earns its place away from the training distribution. Shipping the
+    linear model would be defensible, and the model card says so.
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>How it is built</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>feed</h3>
+      <p>Plays a seeded scenario and emits noisy, dropout-prone surveillance reports at 1 Hz, keyed by aircraft address so Kafka orders each aircraft independently.</p>
+    </div>
+    <div class="card">
+      <h3>track</h3>
+      <p>A constant-velocity Kalman filter per aircraft, with track initiation, coasting and termination. History to Postgres, live picture to Redis. The one service that shards.</p>
+    </div>
+    <div class="card">
+      <h3>conformance</h3>
+      <p>Closest-point-of-approach geometry, trajectory conformance against an earlier prediction, and single-aircraft rules. Publishes alerts through a NEW&rarr;SUSTAINED&rarr;CLEARED lifecycle.</p>
+    </div>
+    <div class="card">
+      <h3>api</h3>
+      <p>FastAPI REST and a WebSocket, plus the plan-view display. Never consumes Kafka and never writes &mdash; so a display refresh stays off the estimation path.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:34px">Two ideas the project is actually about</h3>
+  <p>
+    <strong>A filter chosen for its weakness.</strong> A constant-velocity Kalman filter
+    lags during turns. That lag &mdash; the innovation &mdash; is published downstream and
+    becomes the manoeuvre signal the conformance monitor thresholds on. The obvious
+    upgrade to a constant-turn model would smooth away the quantity the system exists
+    to notice.
+  </p>
+  <p>
+    <strong>A model that learns the correction, not the answer.</strong> The predictor
+    outputs a residual on top of dead reckoning, so a broken, missing, or NaN-producing
+    model degrades to physics rather than to nonsense &mdash; and that promise is executed
+    in CI with the dependency genuinely uninstalled, not asserted in a comment.
+  </p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Engineering</h2>
+  <table>
+    <tr><th>Concern</th><th>What is there</th></tr>
+    <tr><td>Testing</td><td>553 unit and contract tests at 81% branch coverage with no exclusions, 28 integration tests on real Redpanda/Postgres/Redis, 8 end-to-end under compose, and a measured latency budget</td></tr>
+    <tr><td>Contracts</td><td>Committed JSON Schemas and OpenAPI, drift-gated, plus a backward-compatibility diff against git. Schemathesis fuzzes the API against its own document</td></tr>
+    <tr><td>Observability</td><td>Prometheus metrics on all four services, a provisioned Grafana dashboard, and W3C trace context carried across Kafka into Jaeger</td></tr>
+    <tr><td>DevSecOps</td><td>bandit, pip-audit, gitleaks over full history, Trivy, and a syft SBOM. All ten third-party actions pinned to commit SHAs</td></tr>
+    <tr><td>Deployment</td><td>Compose and Kubernetes manifests, applied to a real <code>kind</code> cluster in CI. The image is built once and every consumer asserts it is the one that was tested</td></tr>
+  </table>
+
+  <div class="callout">
+    <strong>The most useful thing in the repository is what went wrong.</strong>
+    Property tests found two geodesy bugs on their first run. An architecture test
+    caught its own author importing one service from another. Fuzzing found the
+    OpenAPI document lying, twice. A consumer-group rebalance could delete a live
+    aircraft from the shared picture &mdash; invisible to 500 passing tests, because
+    every one of them ran a single consumer. And the first CI run this project ever
+    had found five more, including a scenario fingerprint that was not reproducible
+    across operating systems.
+    <a href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/docs/how-it-was-built.md">The full account.</a>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <h2>What it is not</h2>
+  <p>
+    <strong>Not an air traffic control system, and never to be used as one.</strong>
+    Advisory output only, synthetic data only, no certification of any kind &mdash; no
+    DO-178C, no requirements traceability, no structural coverage analysis. It has
+    never been connected to ADS-B or radar. It has no flight plans, so
+    &ldquo;non-conformance&rdquo; can only mean <em>the aircraft did not do what
+    constant-velocity physics predicted</em>, never <em>what it was told</em>.
+  </p>
+  <p>
+    The domain was chosen because it makes the engineering legible &mdash; why ordering
+    matters per aircraft, why a stale track is worse than no track, why latency has a
+    budget, why a false alert is expensive. Those are abstract in most demonstration
+    projects and concrete here.
+  </p>
+  <p class="note">
+    Read <a href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/docs/safety-notes.md">safety-notes.md</a>
+    for the operational boundary and
+    <a href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/docs/future-work.md">future-work.md</a>
+    for what is deliberately not built, and why.
+  </p>
+</div></section>
+
+<section><div class="wrap">
+  <h2>Run it</h2>
+  <pre>git clone https://github.com/nick-bellows/airspace-conformance-platform
+cd airspace-conformance-platform
+docker compose -f deploy/compose.yml up -d --build
+# then open http://localhost:8000</pre>
+  <p class="note">
+    Docker is the only prerequisite. No cloud account, no API keys, no data download
+    &mdash; all traffic is generated locally from a committed seed.
+  </p>
+</div></section>
+
+<footer><div class="wrap">
+  Built by Nick Bellows &middot; MIT licensed &middot;
+  <a href="https://github.com/nick-bellows/airspace-conformance-platform">github.com/nick-bellows/airspace-conformance-platform</a>
+  <br><span class="note">All aircraft, callsigns and positions shown here are simulated.</span>
+</div></footer>
+
+<script>
+(function () {
+  const canvas = document.getElementById("view");
+  const ctx = canvas.getContext("2d");
+  const clock = document.getElementById("clock");
+  const status = document.getElementById("status");
+  const scrub = document.getElementById("scrub");
+  const play = document.getElementById("play");
+
+  const W = canvas.width, H = canvas.height, MARGIN = 96;
+  const C = { grid: "#16242f", dim: "#6f8593", blue: "#4aa8ff", red: "#ff6b5e",
+              amber: "#e0a33a", trail: "#263e52", ink: "#05080b" };
+
+  let frames = [], spanNm = 95, i = 0, playing = true, timer = null;
+
+  const scale = () => (Math.min(W, H) - 2 * MARGIN) / spanNm;
+  const px = (e, n) => [W / 2 + e * scale(), H / 2 - n * scale()];
+
+  function draw(frame) {
+    ctx.fillStyle = C.ink;
+    ctx.fillRect(0, 0, W, H);
+
+    // 20 NM grid
+    ctx.strokeStyle = C.grid; ctx.lineWidth = 2;
+    const step = scale() * 20;
+    for (let k = -4; k <= 4; k++) {
+      ctx.beginPath(); ctx.moveTo(W / 2 + k * step, 0); ctx.lineTo(W / 2 + k * step, H); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(0, H / 2 + k * step); ctx.lineTo(W, H / 2 + k * step); ctx.stroke();
+    }
+
+    ctx.font = "22px ui-monospace, Consolas, monospace";
+    frame.aircraft.forEach((a, index) => {
+      const colour = a.conflicted ? C.red : C.blue;
+      if (a.trail.length > 1) {
+        ctx.strokeStyle = C.trail; ctx.lineWidth = 3; ctx.beginPath();
+        a.trail.forEach(([e, n], j) => {
+          const [x, y] = px(e, n);
+          j ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+        });
+        ctx.stroke();
+      }
+      const [x, y] = px(...a.trail[a.trail.length - 1]);
+      if (a.conflicted) {
+        ctx.strokeStyle = C.red; ctx.lineWidth = 3;
+        ctx.beginPath(); ctx.arc(x, y, 26, 0, Math.PI * 2); ctx.stroke();
+      }
+      ctx.fillStyle = colour;
+      ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
+      const dy = index % 2 === 0 ? -26 : 34;
+      ctx.fillText(a.callsign, Math.min(x + 22, W - 130), Math.max(26, Math.min(y + dy, H - 120)));
+    });
+
+    if (frame.alert) {
+      ctx.fillStyle = "#12060a";
+      ctx.fillRect(0, H - 92, W, 46);
+      ctx.fillStyle = C.amber;
+      ctx.fillText("PREDICTED CONFLICT   " + frame.alert, MARGIN / 2, H - 60);
+    }
+
+    ctx.fillStyle = C.dim;
+    ctx.fillText("synthetic traffic  ·  advisory only  ·  20 NM grid", MARGIN / 2, H - 22);
+
+    const mm = String(Math.floor(frame.t / 60)).padStart(2, "0");
+    const ss = String(Math.floor(frame.t % 60)).padStart(2, "0");
+    clock.textContent = `T+${mm}:${ss}`;
+    status.textContent = frame.alert
+      ? "conflict predicted"
+      : `${frame.aircraft.length} aircraft · no alerts`;
+    status.className = frame.alert ? "alert" : "";
+  }
+
+  function tick() {
+    if (!frames.length) return;
+    draw(frames[i]);
+    scrub.value = String(i);
+    if (playing) i = (i + 1) % frames.length;
+  }
+
+  play.addEventListener("click", () => {
+    playing = !playing;
+    play.textContent = playing ? "Pause" : "Play";
+  });
+  scrub.addEventListener("input", () => {
+    playing = false; play.textContent = "Play";
+    i = Number(scrub.value); draw(frames[i]);
+  });
+
+  fetch("assets/replay.json")
+    .then((r) => { if (!r.ok) throw new Error(r.status); return r.json(); })
+    .then((data) => {
+      frames = data.frames; spanNm = data.span_nm || 95;
+      scrub.max = String(frames.length - 1);
+      timer = setInterval(tick, data.interval_ms || 90);
+      tick();
+    })
+    .catch(() => {
+      // The page is still worth reading without the replay, so say what is
+      // missing rather than leaving a dead rectangle.
+      ctx.fillStyle = C.ink; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = C.dim; ctx.font = "26px ui-monospace, Consolas, monospace";
+      ctx.fillText("replay log unavailable — see the animation in the README", MARGIN, H / 2);
+      status.textContent = "replay unavailable";
+    });
+})();
+</script>
+</body>
+</html>
