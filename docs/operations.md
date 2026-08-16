@@ -357,9 +357,9 @@ and argues every other decision in the manifests.
 
 ## 11. CI
 
-> **None of it has ever run.** This repository had no remote when the pipeline
-> was written. Three external reviews found eighteen defects in it; all are fixed
-> and none is proved by a real run. Read this as intent, not evidence.
+> Green on every push. It went six milestones without executing at all, because
+> the repository had no remote; three external reviews found eighteen defects in
+> it during that time and the first four real runs found five more.
 
 Thirteen jobs. The eight needing no image run in parallel; five wait on a single
 build.

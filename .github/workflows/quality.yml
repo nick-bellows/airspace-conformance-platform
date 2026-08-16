@@ -1,12 +1,15 @@
 # Quality gate.
 #
-# !! NOTHING IN THIS FILE HAS EVER RUN. !!
-# This repository has no remote yet, so every job below is unexecuted code. Two
-# external reviews found defects that a first run would have caught -- a
-# nonexistent action ref, an image that fails its own scan, and a step that
-# executes nothing. They are itemised in the README roadmap and are being fixed
-# before the first push. Do not treat a green local gate as evidence about this
-# file.
+# This file went six milestones without ever executing, because the repository
+# had no remote. Three external reviews found eighteen defects in it during that
+# time, and the first four real runs found five more: a dependency closure
+# guessed twice instead of derived, a scenario fingerprint that differed between
+# MSVC and glibc, tests depending on a clock they did not own, a wall-clock
+# budget asserted on a shared runner, and CPU requests that would not fit a
+# two-core node.
+#
+# The lesson is cheap to state and was expensive to learn: a green local gate is
+# evidence about a laptop.
 #
 # `lint`, `types`, `unit`, and `contracts` mirror `scripts/run_checks.ps1`; the
 # script has no `degradation` step because its venv has every extra installed,

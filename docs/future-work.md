@@ -64,11 +64,11 @@ Real and unbuilt. Each is a known limitation, not an oversight.
   tracker 2 → 3 against a real broker has now been observed working — revoke,
   release, reassign, with the aircraft count unchanged — but not while a
   migration and a rollout are also in flight.
-- **Startup ordering for the feed.** It has no dependency on Redpanda in the
-  Kubernetes manifests and crash-loops until the broker accepts connections. An
-  init container mirroring `acp-wait-for-schema` would close it; crash-loop-until-
-  ready is a defensible pattern, so this is a tidiness and cold-start-time
-  question rather than a correctness one.
+- **Startup ordering for the migration Job.** The Kafka clients got
+  `acp-wait-for-kafka` init containers when crash-loop backoff pushed a rollout
+  past its timeout in CI. The migration Job still relies on `backoffLimit`
+  instead, which works and is what a Job's retry is for, but is inconsistent
+  with its neighbours.
 - **Supply-chain attestation.** CI builds once and every consumer asserts the
   image ID matches, so the published artefact is provably the tested one. There
   is no signature and no SLSA provenance; `cosign attest` on the published digest

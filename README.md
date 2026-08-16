@@ -22,22 +22,21 @@ monitor the services run, not a mock-up. Regenerate it with
 > is in [`docs/future-work.md`](docs/future-work.md) — worth reading before
 > concluding anything is missing by accident.
 >
-> **Status: M0–M5 built, M5 not yet proven.** `docker compose up` from a clean
-> clone produces manoeuvring traffic on a live display streamed over a
-> WebSocket, conflict alerts, and conformance advisories. Tested at every level
-> it claims to work at — unit, contract, integration against real
-> infrastructure, and end to end — plus a measured latency budget. M5 added
-> Prometheus metrics, distributed tracing across Kafka, a provisioned Grafana
-> dashboard, Kubernetes manifests, four-tool security scanning, and a GHCR
-> publish job.
+> **Status: complete, M0–M6.** `docker compose up` from a clean clone produces
+> manoeuvring traffic on a live display streamed over a WebSocket, conflict
+> alerts, and conformance advisories. Tested at every level it claims to work at
+> — unit, contract, integration against real infrastructure, end to end — plus a
+> measured latency budget, Prometheus metrics, distributed tracing across Kafka,
+> Kubernetes manifests applied to a real `kind` cluster, four-tool security
+> scanning, and an image published to GHCR.
 >
-> **The CI has never executed.** This repository had no remote when M5 was
-> written, so its pipeline is configured code that has never run. Three external
-> reviews found eighteen defects in it — including one that could delete a live
-> aircraft from the shared picture, and one that would have published an image
-> nobody had tested. All are fixed and verified locally; none is proved by a
-> real run. M5 stays unchecked until it is, because a milestone whose evidence
-> is "the workflow file says so" fails this repository's own standard.
+> **All thirteen CI jobs are green**, which took four attempts. The pipeline had
+> never executed until this repository got a remote, and running it found five
+> defects that a green local gate could not have shown — including a scenario
+> fingerprint that was not reproducible across operating systems, and three
+> tests that depended on a clock they did not own. Those are written up in
+> [`how-it-was-built.md`](docs/how-it-was-built.md); the ones three external
+> reviews found before that are in the same place.
 
 > **Not an air traffic control system.** Advisory output only, synthetic data
 > only, no certification of any kind. Read [`docs/safety-notes.md`](docs/safety-notes.md)
@@ -337,7 +336,7 @@ Three of the current tests are worth singling out:
 - [x] **M2 — Detection.** Manoeuvring flight model, Kalman filter, separation monitor, alert lifecycle, scenario generator, and the conflict-detection evaluation report; ADRs 0005–0006.
 - [x] **M3 — Trajectory prediction.** Physics baselines, ridge and PyTorch residual models, stratified distribution-shift evaluation, conformance monitoring, model and data cards, operations manual; ADRs 0007–0008.
 - [x] **M4 — Real-time surface and full test pyramid.** WebSocket streaming, contract/compatibility/conformance tests, integration on real containers, end-to-end under compose, and a measured latency budget; ADR 0009.
-- [ ] **M5 — DevSecOps and operations.** Prometheus metrics on all four services, W3C trace context across Kafka into Jaeger, a provisioned Grafana dashboard, Kubernetes manifests, four-tool security scanning with an SBOM, and image publishing to GHCR; ADRs 0010–0011. **Built, unproven** — the pipeline has never run.
+- [x] **M5 — DevSecOps and operations.** Prometheus metrics on all four services, W3C trace context across Kafka into Jaeger, a provisioned Grafana dashboard, Kubernetes manifests, four-tool security scanning with an SBOM, and image publishing to GHCR; ADRs 0010–0011.
 - [x] **M6 — Make it legible.** A demo generated from the real simulator, one page of planning and delivery material, an interview brief, and a 25% cut to the documentation.
 
 No metric appears in this README until its evaluation runner is committed and
@@ -346,9 +345,9 @@ claims about CI.
 
 ## What comes next, and what deliberately does not
 
-M6 is done, and the project is finished as a portfolio piece. One thing is
-outstanding and it is not a milestone: **the pipeline has never run**, so M5
-stays unchecked until there is a green Actions run to link.
+Every milestone is done and the pipeline is green, so the project is finished
+as a portfolio piece. What would come next, and what is deliberately declined,
+is in [`docs/future-work.md`](docs/future-work.md).
 
 Everything beyond it — the one technical improvement worth making, the
 engineering that scale would force, and the things declined on purpose — is in

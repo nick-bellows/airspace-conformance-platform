@@ -140,11 +140,15 @@ having levels is that each one has actually caught the class of bug it was built
 for — there's a list.
 
 **"Is the CI green?"**
-It has never run. The repository had no remote while it was written, so the
-pipeline is configured code. Three review rounds found eighteen defects in it —
-including a publish job that would have shipped a different build than the one
-tested. All fixed, none proved. M5 is marked incomplete for that reason, and
-that's the answer I'd rather give than a badge I can't back.
+Yes — thirteen jobs, and it took four attempts. The more interesting answer is
+that it had never run at all for six milestones, because the repository had no
+remote. Three review rounds found eighteen defects in that unexecuted config,
+and the first real runs found five more that nothing local could have shown: a
+dependency closure I guessed twice instead of deriving, a scenario fingerprint
+that differed between MSVC and glibc because `sin`/`cos` disagree in the last
+ULP, three tests depending on a clock they didn't own, a wall-clock budget
+asserted on a shared runner, and CPU requests that wouldn't fit a two-core
+node.
 
 **"Why is `create_app` 180 lines?"**
 Because it's a flat registry of seven thin route handlers and splitting it would
@@ -164,13 +168,15 @@ docs. A docstring asserted a projection was accurate to 0.1%; measuring it gave
 
 **"What would you do differently?"**
 Push to a remote on day one. Six milestones of CI that had never executed
-produced eighteen defects that a single run would have surfaced immediately, and
-I'd been treating a green local gate as evidence about a pipeline it says nothing
-about.
+produced twenty-three defects between review and the first real runs, and most
+of them a single early run would have surfaced. I'd been treating a green local
+gate as evidence about a pipeline it says nothing about — the gate runs on my
+laptop, with every extra installed, on one operating system, with one CPU
+count.
 
 **"What's this project's biggest weakness?"**
 That it's measured entirely against a simulator I also wrote. Everything
-downstream inherits that. The second is that the pipeline is unproven.
+downstream inherits that.
 
 ### On the domain
 
@@ -204,7 +210,8 @@ surveillance type, which the config makes overridable and the docs say plainly.
 
 - Don't lead with the recall of 1.00. Lead with what's weak; the good numbers
   survive scrutiny better when you got there first.
-- Don't claim the CI is green.
+- Don't oversell the green pipeline. The interesting part is that it was
+  unexecuted for six milestones and what that cost.
 - Don't defend `create_app` for more than a sentence.
 - Don't say "production-ready". It isn't, deliberately, and
   [`future-work.md`](future-work.md) says exactly where the line is.

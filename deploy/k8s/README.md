@@ -70,10 +70,9 @@ The numeric filename prefixes exist because `kubectl apply -f` on a directory
 processes files in lexical order, and the namespace has to exist before anything
 claims to be in it.
 
-CI is **configured** to apply these to a `kind` cluster on every push and to
-assert the stack serves traffic and a worker's metrics endpoint answers. That job
-has never run — this repository has no remote yet — so treat it as unproven.
-`tests/unit/test_deployment.py` does run, and checks the things that drift
+CI applies these to a `kind` cluster on every push and asserts the stack serves
+traffic and a worker's metrics endpoint answers. `tests/unit/test_deployment.py`
+additionally checks the things that drift
 statically: scrape annotations against container ports, the ConfigMap metrics
 port against the annotations, the security context on every container including
 init containers, and that the image the manifests name is the one CI builds and

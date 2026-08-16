@@ -224,29 +224,31 @@ them, and what is deliberately declined, is in [`future-work.md`](future-work.md
 
 ## 5a. Observability and deployment
 
-- **No CI job has run *in GitHub Actions*.** There is no git remote, so nothing
-  has executed there and no image has been published. Three external reviews
-  found eighteen defects in that configuration, each round finding things the
-  last had missed. The `k8s` job's steps have since been run by hand against a
-  real `kind` cluster and passed end to end — cluster created, image side-loaded,
-  manifests applied, migration completed, all four deployments rolled out,
-  traffic reaching the API, worker metrics scrapeable — but that is a human
-  running the commands, not the pipeline running itself.
-- **The feed crash-loops on a cold Kubernetes start.** Observed during that run:
-  two restarts with `KafkaConnectionError: Unable to bootstrap from
-  redpanda:9092`, exit 1, then Kubernetes `BackOff`. Compose expresses the
-  dependency (`depends_on: redpanda, condition: service_healthy`); the manifests
-  express nothing, so the feed starts before the broker is accepting connections
-  and dies until it is. It is self-healing and costs tens of seconds on a cold
-  start, and it is the same class of gap as the migration ordering defect —
-  Kubernetes has no `depends_on`, so ordering has to be built.
-- **One termination event during that run is unexplained.** Two seconds after the
-  first rebalance, a tracker replica logged `terminated stale tracks` for two
-  aircraft that were still reporting. The most likely cause is the feed
-  crash-loop above leaving a gap longer than the 30 s termination timeout, which
-  would make the termination *correct* — but a controlled test (stop the tracker,
-  build a 90 s backlog, restart) did not reproduce it, so this is recorded as
-  observed and not diagnosed rather than explained away.
+- **The pipeline is green, and was unexecuted for six milestones.** Three
+  external reviews found eighteen defects in it during that time, and the first
+  four real runs found five more. Everything CI now asserts is asserted on
+  every push; nothing here is a claim about a YAML file any more. What CI does
+  *not* cover is unchanged and listed below.
+- **The migration Job still crash-loops briefly on a cold start.** It has no
+  init container, so `alembic upgrade head` fails until Postgres accepts
+  connections and the Job's `backoffLimit` retries it. That is the mechanism a
+  Job has for exactly this, and it completes — but the feed and the Kafka
+  clients got `wait-for-kafka` init containers for the same problem, so the
+  inconsistency is a tidiness gap rather than a considered difference.
+- **One termination event during a local `kind` run is unexplained.** Two
+  seconds after the first rebalance, a tracker replica logged `terminated stale
+  tracks` for two aircraft that were still reporting. The most likely cause is
+  the feed crash-loop that the `wait-for-kafka` init container has since fixed,
+  leaving a gap longer than the 30 s termination timeout — which would make the
+  termination *correct* — but a controlled test (stop the tracker, build a 90 s
+  backlog, restart) did not reproduce it. Recorded as observed and not
+  diagnosed rather than explained away.
+- **Reproducibility is to a tolerance, not to the byte.** The scenario
+  fingerprint that guards the committed evaluation rounds to nine decimal places
+  before hashing, because `math.sin`, `cos`, `asin` and `atan2` differ in the
+  last unit in the last place between MSVC and glibc. Sub-millimetre differences
+  cannot move a 5 NM verdict, but "the same scenarios" here means to within
+  0.1 mm rather than byte-identical files.
 - **Nothing alerts.** Prometheus scrapes and Grafana draws, but there are no
   alerting rules and no Alertmanager, so "consumer lag is climbing" is visible
   only to someone already looking at the page.
@@ -265,9 +267,11 @@ them, and what is deliberately declined, is in [`future-work.md`](future-work.md
   every consumer asserts the loaded image matches, so the published artefact is
   demonstrably the tested one. There is no signature and no SLSA provenance, so
   the chain holds within one workflow run and is unverifiable outside it.
-- **The `kind` job is configured to prove the manifests start and pass traffic,
-  not that they are production-shaped** — and has proved neither yet. No resource
-  pressure, no node failure, no rolling update under load, no HPA.
+- **The `kind` job proves the manifests start and pass traffic, not that they
+  are production-shaped.** No node failure, no rolling update under load, no HPA.
+  It did, however, find real resource pressure: CPU requests sized from the
+  500-aircraft latency budget rather than the four aircraft the stack carries
+  left the second tracker replica unschedulable on a two-core runner.
 - **Infrastructure runs as Deployments with ephemeral storage**, so a Postgres
   restart loses track history. A StatefulSet would imply a durability this stack
   does not have.

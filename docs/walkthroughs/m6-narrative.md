@@ -107,16 +107,32 @@ The six milestone walkthroughs were briefly consolidated into
 [`how-it-was-built.md`](../how-it-was-built.md) and then restored, so both exist:
 the overview is the page to read first, and these are where to go for detail.
 
+## And then the pipeline ran
+
+The repository got a remote at the end of M6, and the workflow executed for the
+first time in its life. It took four attempts:
+
+| Run | Failed | Why |
+| --- | --- | --- |
+| 1 | 4 of 12 | `contracts` installed `.[dev]` but renders the OpenAPI document, which imports FastAPI. The scenario fingerprint differed between Windows and Linux because `sin`/`cos` disagree in the last ULP. Three stream tests captured `NOW` at import and were filtered out of a 20-second window once the suite got slow enough. `conformance` timed out because Kafka clients crash-loop until the broker is listening |
+| 2 | 2 of 13 | The contracts closure was still one import short — the API app reaches redis and sqlalchemy through the stream module. And PyPI reset the connection mid-build |
+| 3 | 1 of 13 | The second tracker replica could not be scheduled: `Insufficient cpu`. Requests had been sized from the 500-aircraft latency budget rather than the four aircraft the stack carries |
+| 4 | 0 | Green, including `publish` |
+
+Every one of those was invisible to a green local gate, because the gate runs on
+one laptop, with every extra installed, on one operating system, with one CPU
+count. That is the whole argument for pushing on day one rather than day sixty.
+
 ## What this milestone does not do
 
-- **The pipeline still has never run.** M6 does not change that, and M5 stays
-  unchecked.
 - **The demo shows one scenario.** `unannounced-turn` and `quiet-cruise` are
   arguably more interesting — a conformance advisory and a deliberate
   non-event — and neither is rendered.
-- **No GitHub Pages replay.** A static frame-log replay driven by the existing
-  display was considered and demoted: the recording communicates the same thing
-  to the same reader for a fraction of the work.
+- **The project page shows a recording, not a live system.** `docs/index.html`
+  replays a committed frame log in a canvas with no backend. It is labelled as a
+  replay on the page rather than in a footnote, because a page that looks live
+  and is not would be the same failure as a metric that looks measured and is
+  not.
 
 ## Questions a reviewer might ask
 

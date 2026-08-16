@@ -19,12 +19,15 @@ Six iterations, one per milestone. Each has a business-value statement because
 | 2 | Detect a predicted loss of separation and measure how well | Turns "it processes data" into "it does the job, this well" — the first defensible number | ✅ M2 |
 | 3 | Beat physics at trajectory prediction, or report that it does not | Establishes whether ML earns its place, with the baseline shipped alongside | ✅ M3 — beats it while turning, adds nothing in cruise |
 | 4 | Test at every level the system claims to work at | Distinguishes "the tests pass" from "the guarantees hold" | ✅ M4 |
-| 5 | Make it operable, scannable, and deployable | Everything an on-call engineer needs before a system is anyone's responsibility | ⚠️ M5 — built, pipeline never executed |
-| 6 | Make the work legible to someone who has ten minutes | An unread system demonstrates nothing | ▶ M6 — in progress |
+| 5 | Make it operable, scannable, and deployable | Everything an on-call engineer needs before a system is anyone's responsibility | ✅ M5 — after four attempts at the first pipeline run |
+| 6 | Make the work legible to someone who has ten minutes | An unread system demonstrates nothing | ✅ M6 |
 
-**Objective 5 is the honest one.** It is marked incomplete rather than done,
-because its evidence would be a green pipeline and there has never been one. The
-work exists; the proof does not.
+**Objective 5 was the honest one.** It sat marked incomplete for a long time,
+because its evidence was supposed to be a green pipeline and there had never
+been one — the repository had no remote for six milestones. When it finally ran,
+it took four attempts and surfaced five defects nothing local could have shown.
+That gap between "built" and "proved" is the single most useful thing this
+planning exercise recorded.
 
 ---
 
@@ -92,6 +95,7 @@ prevent.
 
 | Risk | How it was resolved |
 | --- | --- |
+| The pipeline had never executed, so its guarantees were unverified | Pushed to a remote and iterated until all thirteen jobs were green. It took four runs and found five defects, which is the argument for having done it sooner |
 | Synthetic data makes every metric circular | The conflict detector is scored against ground truth it never sees; only the *traffic* is invented, not the *measurement*. Argued in [ADR 0002](adr/0002-synthetic-traffic-only.md) before any number was published |
 | The ML component might not beat physics | Baselines shipped alongside and the honest result published: it halves turning error and adds nothing in cruise. Predetermining the answer was the actual risk |
 | Kafka + testcontainers flakiness in CI | Redpanda single-container, readiness probed via the admin API rather than by sleeping |
@@ -100,7 +104,6 @@ prevent.
 
 | Risk | Mitigation |
 | --- | --- |
-| The pipeline has never executed, so its guarantees are unverified | Marked incomplete rather than done; every CI claim in the docs is qualified. Resolves on the first green run |
 | A rolling upgrade combines migration, pod rollout, and Kafka rebalance — three paths each recently found broken | Each fixed and unit-tested independently; the combination is the top item in [`future-work.md`](future-work.md) and is stated as unproven |
 | Domain resemblance could be mistaken for a real ATC system | [`safety-notes.md`](safety-notes.md) states the boundary; no FAA or employer association anywhere |
 
@@ -128,6 +131,8 @@ revealed it was measuring the wrong thing.** M3 was re-planned three times
 because the evaluation stratification kept hiding the effect it was meant to
 show. M5 doubled in length because three review rounds found defects in code
 nobody had executed.
+
+M5 doubled again when the pipeline finally ran and needed four attempts.
 
 The estimate that held was M1, the walking skeleton — the one milestone with no
 number to publish.
