@@ -35,13 +35,16 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
 )
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from acp.common.config import Settings, load_settings
 from acp.common.contracts import Alert, AlertKind, TrackUpdate
 from acp.common.logging import configure_logging, get_logger
+from acp.common.metrics import CONTENT_TYPE as METRICS_CONTENT_TYPE
+from acp.common.metrics import METRICS
+from acp.common.tracing import configure_tracing
 from acp.services.api.stream import AirspaceBroadcaster, origin_is_allowed
 from acp.storage.stores import LiveAlertStore, LiveTrackStore, TrackHistoryStore
 
@@ -188,6 +191,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             content=body.model_dump(),
         )
 
+    @app.get("/metrics", include_in_schema=False)
+    async def metrics() -> Response:
+        """Prometheus exposition.
+
+        Excluded from the OpenAPI schema deliberately: it is an operational
+        interface with its own well-known format, not part of the API contract,
+        and describing it in OpenAPI would imply consumers should generate
+        clients against it.
+        """
+        return Response(content=METRICS.render(), media_type=METRICS_CONTENT_TYPE)
+
     @app.get("/v1/tracks", response_model=TracksResponse, tags=["airspace"])
     async def tracks(
         live: Annotated[LiveTrackStore, Depends(get_live)],
@@ -306,6 +320,7 @@ def main() -> int:
 
     settings = load_settings()
     configure_logging("api", settings.log_level)
+    configure_tracing("acp-api", settings.otlp_endpoint)
     uvicorn.run(
         create_app(settings),
         host=settings.api_host,

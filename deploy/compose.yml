@@ -21,6 +21,19 @@ x-service-base: &service-base
     ACP_POSTGRES_DSN: postgresql+asyncpg://acp:acp@postgres:5432/acp
     ACP_REDIS_URL: redis://redis:6379/0
     ACP_LOG_LEVEL: INFO
+    # The port the three workers serve /metrics on. Not published to the host:
+    # Prometheus scrapes it over the compose network, and a port on the host
+    # would be exposure for no benefit. Must match deploy/observability/prometheus.yml.
+    ACP_METRICS_PORT: "9464"
+    # Empty by default, and deliberately so. Set it to turn tracing on:
+    #
+    #   ACP_OTLP_ENDPOINT=http://jaeger:4318/v1/traces \
+    #     docker compose -f deploy/compose.yml --profile observability up -d
+    #
+    # Defaulting it to the Jaeger URL would make every service without the
+    # profile running retry an export to a collector that is not there, filling
+    # the logs with failures caused entirely by the default.
+    ACP_OTLP_ENDPOINT: ${ACP_OTLP_ENDPOINT:-}
   restart: unless-stopped
 
 services:
@@ -64,7 +77,14 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U acp -d acp"]
+      # `-h 127.0.0.1` is load-bearing, not decoration. Without it pg_isready
+      # checks the Unix socket, and during first-boot initialisation Postgres
+      # runs a temporary server that listens on the socket *only*. The check
+      # therefore passes while TCP is still refused, compose declares the
+      # service healthy, and `migrate` starts and dies with
+      # `ConnectionRefusedError: [Errno 111]` on a cold volume -- observed, not
+      # theorised. Check the interface the clients actually use.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U acp -d acp"]
       interval: 5s
       timeout: 5s
       retries: 20
@@ -152,6 +172,60 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Observability, opt-in:
+  #   docker compose -f deploy/compose.yml --profile observability up -d
+  #
+  # Off by default because the demo does not need it and it is another 500 MB
+  # of images. Turning it on requires no rebuild -- the services read
+  # ACP_OTLP_ENDPOINT and export if it is set.
+  # ---------------------------------------------------------------------------
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    profiles: ["observability"]
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    ports:
+      - "127.0.0.1:16686:16686" # UI
+      - "127.0.0.1:4318:4318" # OTLP/HTTP
+
+  prometheus:
+    image: prom/prometheus:v3.0.1
+    profiles: ["observability"]
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=1h
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "127.0.0.1:9090:9090"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    profiles: ["observability"]
+    environment:
+      # Anonymous access so the dashboard opens with no login, which is the
+      # whole point of provisioning it. The role is deliberately **Viewer**
+      # rather than Admin: the dashboard is a committed artefact that the UI
+      # cannot save over anyway (`allowUiUpdates: false`), so an anonymous
+      # Admin would buy nothing and hand any local process the ability to add
+      # datasources. Explore needs a real login; that is the intended trade.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_AUTH_DISABLE_LOGIN_FORM: "false"
+      # No GF_SECURITY_ALLOW_EMBEDDING. Nothing embeds these panels yet, and
+      # allowing framing alongside anonymous access is a clickjacking setup for
+      # a feature that does not exist. Turn it on when something needs it.
+    volumes:
+      - ./observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/acp.yml:ro
+      - ./observability/grafana-dashboards.yml:/etc/grafana/provisioning/dashboards/acp.yml:ro
+      - ./observability/dashboard.json:/var/lib/grafana/dashboards/acp.json:ro
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      - prometheus
 
   # Opt-in web UI for inspecting topics during a demo:
   #   docker compose -f deploy/compose.yml --profile tools up -d

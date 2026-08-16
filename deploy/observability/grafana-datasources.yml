@@ -1,0 +1,29 @@
+# Grafana datasource provisioning.
+#
+# Provisioned from a file rather than clicked in, so a fresh `docker compose up`
+# lands on a working dashboard with no manual setup. A dashboard that requires
+# ten minutes of configuration before it shows anything is a dashboard nobody
+# looks at.
+
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: acp-prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      # Must match `scrape_interval` in prometheus.yml, otherwise Grafana picks
+      # step values that under- or over-sample the series and rate() windows
+      # come out wrong at short ranges.
+      timeInterval: 5s
+
+  - name: Jaeger
+    uid: acp-jaeger
+    type: jaeger
+    access: proxy
+    url: http://jaeger:16686
+    editable: false

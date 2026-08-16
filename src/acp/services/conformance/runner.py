@@ -27,6 +27,8 @@ from acp.common.contracts import (
 )
 from acp.common.logging import get_logger
 from acp.common.messaging import MessagePublisher, MessageSubscriber
+from acp.common.metrics import METRICS
+from acp.common.tracing import span
 from acp.services.conformance.alerts import AlertManager, Detection
 from acp.services.conformance.monitor import ConformanceMonitor, NonConformance
 from acp.services.conformance.rules import check as check_rules
@@ -52,7 +54,12 @@ MAX_DATA_CLOCK_LEAD = timedelta(days=1)
 
 @dataclass(frozen=True, slots=True)
 class ConformanceStats:
-    """Counters for logging and, at M5, for Prometheus."""
+    """End-of-run totals for the shutdown log line.
+
+    Distinct from the Prometheus counters in `acp.common.metrics`, which are
+    live and scrapeable; these summarise one run and are what the tests assert
+    on.
+    """
 
     updates_consumed: int
     scans: int
@@ -174,9 +181,9 @@ class ConformanceRunner:
         self._scans += 1
         vanished = self._expire_stale(now)
 
-        detections = [
-            self._as_detection(c) for c in self._monitor.scan(list(self._picture.values()))
-        ]
+        with METRICS.time(METRICS.scan_duration, "conformance"), span("conflict-scan"):
+            conflicts = self._monitor.scan(list(self._picture.values()))
+        detections = [self._as_detection(c) for c in conflicts]
         for track in self._picture.values():
             detections.extend(
                 Detection(
@@ -222,12 +229,18 @@ class ConformanceRunner:
             # its own NEW would leave a consumer showing an alert forever.
             await self._publisher.publish(TOPIC_ALERTS, key=alert.alert_key, message=alert)
             self._alerts += 1
+            METRICS.alerts_published.labels(
+                service="conformance", kind=str(alert.kind), state=str(alert.state)
+            ).inc()
 
         # The read model the API renders from. Written after publishing, so a
         # crash between the two loses the display update but not the event --
         # the topic is the record, Redis is a convenience.
         if self._alert_store is not None and alerts:
             await self._alert_store.apply(alerts)
+
+        METRICS.live_tracks.labels(service="conformance").set(len(self._picture))
+        METRICS.active_alerts.labels(service="conformance").set(self._manager.active_count)
 
         if alerts:
             _log.info(

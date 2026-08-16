@@ -26,12 +26,14 @@ from dataclasses import dataclass
 from types import TracebackType
 from typing import Self
 
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
 from aiokafka.admin import AIOKafkaAdminClient, NewTopic
 from aiokafka.errors import TopicAlreadyExistsError
 from pydantic import BaseModel, ValidationError
 
 from acp.common.logging import get_logger, trace_id_var
+from acp.common.metrics import METRICS
+from acp.common.tracing import consumer_span, current_trace_id, inject_headers
 
 #: Kafka header carrying the correlation id across a topic boundary. No stack
 #: trace crosses a broker, so this is how one report is followed end to end.
@@ -100,13 +102,22 @@ class MessagePublisher:
         """
         if self._producer is None:
             raise RuntimeError("publisher is not started; use it as an async context manager")
-        trace_id = trace_id_var.get() or uuid.uuid4().hex
+        trace_id = current_trace_id()
+        # Both headers travel. `traceparent` is the W3C standard a tracing
+        # backend understands; `x-acp-trace-id` is the plain correlation id that
+        # keeps `grep` working with no collector deployed, which is the common
+        # case for anyone running this locally.
+        headers = inject_headers([(TRACE_HEADER, trace_id.encode())])
         await self._producer.send_and_wait(
             topic,
             key=key.encode(),
             value=message.model_dump_json().encode(),
-            headers=[(TRACE_HEADER, trace_id.encode())],
+            headers=headers,
         )
+        # Counted here rather than at each call site so the feed -- which has no
+        # other instrumentation, being a pure producer -- still has a metric that
+        # says whether it is emitting anything.
+        METRICS.messages_published.labels(service=self._client_id, topic=topic).inc()
 
 
 class MessageSubscriber[MessageT: BaseModel]:
@@ -163,6 +174,7 @@ class MessageSubscriber[MessageT: BaseModel]:
             raise RuntimeError("subscriber is not started; use it as an async context manager")
 
         async for record in self._consumer:
+            self._record_lag(record.topic, record.partition, record.offset)
             trace_id = _trace_id_from(record.headers)
             # Saved and restored **by value**, not with the token `set()`
             # returns. A token may only be reset in the context that created it,
@@ -188,22 +200,55 @@ class MessageSubscriber[MessageT: BaseModel]:
                         "errors": error.error_count(),
                     },
                 )
+                METRICS.messages_discarded.labels(service=self._client_id, topic=record.topic).inc()
                 await self._consumer.commit()
                 trace_id_var.set(previous)
                 continue
 
             try:
-                yield Envelope(
-                    message=message,
-                    key=record.key.decode() if record.key else None,
-                    topic=record.topic,
-                    partition=record.partition,
-                    offset=record.offset,
-                    trace_id=trace_id,
-                )
-                await self._consumer.commit()
+                # Continues the producer's trace rather than starting a new one,
+                # so the report and the alert it eventually caused appear in a
+                # single timeline across three processes.
+                with consumer_span(
+                    f"consume {record.topic}",
+                    record.headers,
+                    **{"messaging.partition": record.partition, "messaging.offset": record.offset},
+                ):
+                    yield Envelope(
+                        message=message,
+                        key=record.key.decode() if record.key else None,
+                        topic=record.topic,
+                        partition=record.partition,
+                        offset=record.offset,
+                        trace_id=trace_id,
+                    )
+                    await self._consumer.commit()
             finally:
                 trace_id_var.set(previous)
+
+    def _record_lag(self, topic: str, partition: int, offset: int) -> None:
+        """Publish how far behind the head this consumer is.
+
+        Read from the consumer's own cached high-water mark rather than by
+        asking the broker, so it costs nothing per message. The number is
+        therefore as fresh as the last fetch response, which for a consumer that
+        is keeping up is the current one and for a consumer that is falling
+        behind -- the case that matters -- is close enough to see the trend.
+
+        A high-water mark of 0 means no fetch has completed yet, not that the
+        partition is empty, so it is skipped rather than reported as zero lag.
+        """
+        if self._consumer is None:  # pragma: no cover - unreachable from stream()
+            return
+        highwater = self._consumer.highwater(TopicPartition(topic, partition))
+        if not highwater:
+            return
+        # `offset` is the record just handed out, so the next one this consumer
+        # wants is offset + 1. Without the +1 a fully caught-up consumer reports
+        # a permanent lag of one message, which reads as a real backlog.
+        METRICS.consumer_lag.labels(
+            service=self._client_id, topic=topic, partition=str(partition)
+        ).set(max(0, highwater - (offset + 1)))
 
 
 def _trace_id_from(headers: Sequence[tuple[str, bytes]] | None) -> str:

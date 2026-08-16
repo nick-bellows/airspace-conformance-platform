@@ -1,10 +1,14 @@
-# Quality gate. Mirrors `scripts/run_checks.ps1` exactly -- if the local script
-# passes, this should too.
+# Quality gate. The first five jobs mirror `scripts/run_checks.ps1` exactly --
+# if the local script passes, they should too.
 #
 # Jobs are split rather than chained into one so a failure names itself in the
 # checks list: "types" failing is a different signal from "contracts" failing.
-# Security scanning, image build/publish, integration, e2e, kind, and the
-# latency budget arrive at M5; the README milestone list says so.
+#
+# Ordering note: nothing here uses `needs:` except `publish`. Jobs run in
+# parallel because a lint failure and a test failure are independent facts and
+# a developer wants both in one run, not the second one an hour later. `publish`
+# is the exception, because pushing an image that failed its own tests is the
+# one ordering that actually matters.
 
 name: quality
 
@@ -13,11 +17,14 @@ on:
     branches: [main]
   pull_request:
 
+# Read-only by default. `publish` widens this for itself alone rather than
+# every job in the file inheriting the ability to write packages.
 permissions:
   contents: read
 
 env:
   PYTHON_VERSION: "3.13"
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
 
 jobs:
   lint:
@@ -96,7 +103,8 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      # Deliberately WITHOUT `ml`: no torch, no scikit-learn.
+      # Deliberately WITHOUT `ml` and WITHOUT `observability`: no torch, no
+      # scikit-learn, no prometheus_client, no OpenTelemetry.
       - run: pip install -e ".[dev,messaging,storage,api]"
       # The model card and ADR 0007 both promise the system degrades to dead
       # reckoning when the model is unavailable. That promise was false while
@@ -113,6 +121,30 @@ jobs:
           p = TrajectoryPredictor(60.0)
           assert not p.has_model, "expected no model without the ml extra"
           print("degrades to physics:", p.version)
+          PY
+      # Same claim, different dependency. ADR 0010 says a service runs blind
+      # rather than refusing to start when the observability stack is absent;
+      # this is what stops that sentence becoming aspirational.
+      - name: metrics and tracing degrade to no-ops
+        run: |
+          python - <<'PY'
+          import importlib.util
+          assert importlib.util.find_spec("prometheus_client") is None, "extra present; proves nothing"
+          from acp.common.metrics import METRICS, METRICS_AVAILABLE, serve_metrics
+          from acp.common.tracing import TRACING_AVAILABLE, configure_tracing, inject_headers, span
+          assert not METRICS_AVAILABLE and not TRACING_AVAILABLE
+          # Every call site in the codebase, exercised against the no-ops.
+          METRICS.reports_consumed.labels(service="track").inc()
+          METRICS.live_tracks.labels(service="track").set(3)
+          with METRICS.time(METRICS.pipeline_latency, "track"):
+              pass
+          assert b"unavailable" in METRICS.render()
+          assert serve_metrics(9464) is False
+          assert configure_tracing("acp-track", "http://collector:4318/v1/traces") is False
+          assert inject_headers([("x", b"y")]) == [("x", b"y")]
+          with span("estimate", icao24="a1b2c3"):
+              pass
+          print("runs blind, as documented")
           PY
 
   integration:
@@ -182,3 +214,249 @@ jobs:
       # Cheap early signal: the e2e job builds the same image, but this fails in
       # a minute rather than after the stack has been brought up.
       - run: docker build --tag acp:ci .
+
+      # The Kubernetes security context, checked in ten seconds instead of the
+      # five minutes the `kind` job takes. Read-only root filesystem, non-root
+      # UID, all capabilities dropped -- the same constraints 30-services.yaml
+      # declares. The failure this catches is a library deciding to write a
+      # cache directory under $HOME, which is inside the read-only root; torch
+      # is the obvious candidate, and loading the trajectory model is therefore
+      # the specific thing exercised here.
+      - name: the image runs under the Kubernetes security context
+        run: |
+          docker run --rm --read-only --user 1001:1001 --cap-drop ALL \
+            --security-opt no-new-privileges acp:ci python - <<'PY'
+          from acp.common.metrics import METRICS_AVAILABLE, serve_metrics
+          from acp.common.tracing import TRACING_AVAILABLE
+          from acp.ml.predictor import TrajectoryPredictor
+
+          # The shipped image is expected to carry the observability extra. If
+          # it stops doing so, Prometheus scrapes a system with nothing to say
+          # and nothing errors anywhere -- so it is asserted, not assumed.
+          assert METRICS_AVAILABLE, "image built without prometheus_client"
+          assert TRACING_AVAILABLE, "image built without opentelemetry"
+
+          predictor = TrajectoryPredictor(60.0)
+          assert predictor.has_model, "the committed model did not load in the image"
+          assert serve_metrics(9464), "could not bind the metrics port"
+          print("ok:", predictor.version)
+          PY
+
+  # ---------------------------------------------------------------------------
+  # Security. Four different questions, deliberately in one job so a reviewer
+  # sees one red or green mark for "is this safe to run":
+  #
+  #   my code        -> bandit          (SAST)
+  #   my deps        -> pip-audit       (known CVEs in what actually ships)
+  #   my history     -> gitleaks        (secrets, including ones already removed)
+  #   my image       -> Trivy + syft    (OS/library CVEs, and a bill of materials)
+  # ---------------------------------------------------------------------------
+  security:
+    name: security (SAST, deps, secrets, image)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history. A secret that was committed and then removed is still
+          # in the objects and still compromised; scanning only the tip would
+          # report clean on exactly the case that matters.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      # ruff already runs the flake8-bandit ruleset ("S") on every file, and
+      # this overlaps it on purpose: ruff's implementation is a subset, it is
+      # pinned to a different release cadence, and the run costs seconds. The
+      # overlap is cheap; a gap between two tools that both claim to do SAST
+      # would not be.
+      - name: bandit (SAST)
+        run: |
+          pip install bandit
+          bandit --recursive src --severity-level medium --confidence-level medium
+
+      # Scoped to what the image installs, not to the dev toolchain: a CVE in a
+      # linter that never runs in production is noise, and a CVE in aiokafka is
+      # not.
+      #
+      # `ml` is left out because the CPU-only torch wheel carries a local
+      # version tag (2.x.y+cpu) that does not exist on PyPI, so pip-audit cannot
+      # resolve it and reports a skip rather than a result. Torch is not
+      # therefore unscanned -- Trivy reads the Python packages inside the built
+      # image below, which is the scan that covers it.
+      #
+      # `--skip-editable` for the project itself, which has no advisory feed.
+      # Paired with `--strict` it would fail on that deliberate skip, so the
+      # flags are not combined.
+      - name: pip-audit (dependency CVEs in the shipped set)
+        run: |
+          pip install --upgrade pip setuptools
+          pip install pip-audit
+          pip install -e ".[messaging,storage,api,observability]"
+          pip-audit --skip-editable
+
+      # Mounted read-only: a scanner has no reason to be able to write to the
+      # thing it is scanning.
+      - name: gitleaks (secrets in the full history)
+        run: |
+          docker run --rm --volume "$PWD:/repo:ro" \
+            zricethezav/gitleaks:v8.21.2 \
+            detect --source /repo --config /repo/.gitleaks.toml --redact --verbose
+
+      - name: build the image to scan
+        run: docker build --tag acp:scan .
+
+      # Only fixed CRITICAL/HIGH findings fail the build. An unfixed CVE in a
+      # base image is real, but failing every run over something with no
+      # available patch trains people to ignore the job -- which is how a
+      # fixable one gets ignored too.
+      - name: Trivy (image vulnerabilities)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: acp:scan
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
+      # Informational. Trivy's Kubernetes checks encode opinions this stack has
+      # deliberately declined (ephemeral storage, a committed dev credential),
+      # both of which are argued in deploy/k8s/README.md. Failing on them would
+      # mean either arguing with the tool in config or pretending the decisions
+      # were not made.
+      - name: Trivy (deployment misconfiguration)
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          scan-type: config
+          scan-ref: deploy
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          format: table
+
+      - name: SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: acp:scan
+          format: spdx-json
+          artifact-name: acp-sbom.spdx.json
+          output-file: acp-sbom.spdx.json
+
+  # ---------------------------------------------------------------------------
+  # The manifests, applied to a real cluster. `kubectl apply --dry-run` proves
+  # only that the YAML parses; this proves the pods actually start under the
+  # security context they declare, which is where readOnlyRootFilesystem and a
+  # non-root UID usually turn out to be wrong.
+  # ---------------------------------------------------------------------------
+  k8s:
+    name: kubernetes (kind smoke test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build the image
+        run: docker build --tag acp:dev .
+
+      - uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: acp
+          node_image: kindest/node:v1.31.2
+
+      # The manifests use `imagePullPolicy: IfNotPresent` and a tag that exists
+      # nowhere. Side-loading is what makes that work without a registry.
+      - name: load the image into the cluster
+        run: kind load docker-image acp:dev --name acp
+
+      - run: kubectl apply -f deploy/k8s/
+
+      - name: wait for infrastructure
+        run: |
+          kubectl -n acp rollout status deployment/redpanda --timeout=300s
+          kubectl -n acp rollout status deployment/postgres --timeout=180s
+          kubectl -n acp rollout status deployment/redis --timeout=120s
+
+      - name: the migration completes
+        run: kubectl -n acp wait --for=condition=complete job/migrate --timeout=180s
+
+      - name: wait for the services
+        run: |
+          for deployment in feed track conformance api; do
+            kubectl -n acp rollout status "deployment/$deployment" --timeout=240s
+          done
+
+      # The point of the smoke test: not "did the pods start" but "did data get
+      # all the way through". The feed publishes, the tracker filters, the API
+      # serves -- if any link is broken this returns an empty list.
+      - name: traffic reaches the API
+        run: |
+          kubectl -n acp port-forward service/api 8000:8000 &
+          sleep 5
+          curl --fail --silent --show-error http://127.0.0.1:8000/health
+          curl --fail --silent --show-error http://127.0.0.1:8000/ready
+          for attempt in $(seq 1 30); do
+            count=$(curl --fail --silent http://127.0.0.1:8000/v1/tracks | python -c 'import json,sys; print(len(json.load(sys.stdin)["tracks"]))')
+            echo "attempt $attempt: $count tracks"
+            if [ "$count" -gt 0 ]; then exit 0; fi
+            sleep 5
+          done
+          echo "no tracks reached the API within 150s"
+          exit 1
+
+      # Proves the worker metrics endpoint added in M5 is reachable in the
+      # deployed topology, not only in a unit test.
+      - name: worker metrics are scrapeable
+        run: |
+          pod=$(kubectl -n acp get pod -l app=track -o jsonpath='{.items[0].metadata.name}')
+          kubectl -n acp exec "$pod" -- \
+            python -c "import urllib.request; body = urllib.request.urlopen('http://127.0.0.1:9464/metrics').read().decode(); assert 'acp_reports_consumed_total' in body, body[:400]; print('metrics endpoint OK')"
+
+      - name: cluster state on failure
+        if: failure()
+        run: |
+          kubectl -n acp get pods -o wide
+          kubectl -n acp describe pods
+          kubectl -n acp logs -l app=track --tail=100 --prefix || true
+          kubectl -n acp logs -l app=api --tail=100 --prefix || true
+
+  # ---------------------------------------------------------------------------
+  # CD. Publishes to GHCR on main only, and only behind every gate that could
+  # say the image is broken. This is the step that makes the pipeline continuous
+  # *delivery* rather than continuous inspection.
+  # ---------------------------------------------------------------------------
+  publish:
+    name: publish image (GHCR)
+    runs-on: ubuntu-latest
+    needs: [lint, types, unit, contracts, degradation, security, e2e, k8s]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Tagged by commit SHA as well as `latest`, so a deployment can name an
+      # exact build and a rollback has something to roll back to. `latest`
+      # alone would make "which image is running" unanswerable.
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

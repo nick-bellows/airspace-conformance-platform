@@ -55,7 +55,9 @@ plus `sim.truth.v1` for evaluation only.
 - At-least-once delivery, which means consumers must be idempotent. Handled
   deliberately in ADR 0005.
 - Debugging is harder: no stack trace crosses a topic. Mitigated by propagating
-  a `trace_id` in Kafka headers (M5).
+  a `trace_id` in Kafka headers since M1, and W3C `traceparent` since M5 — one
+  surveillance report is now a single trace across three services. See
+  [ADR 0010](0010-observability-degrades-rather-than-blocks.md).
 
 **Rejected: HTTP request/response.** Simpler for a reader, but it makes the
 producer responsible for knowing every consumer, loses ordering guarantees the

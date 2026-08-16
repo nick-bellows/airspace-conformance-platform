@@ -19,6 +19,8 @@ from acp.common.contracts import (
 )
 from acp.common.logging import configure_logging, get_logger
 from acp.common.messaging import MessagePublisher, ensure_topics
+from acp.common.metrics import serve_metrics
+from acp.common.tracing import configure_tracing
 from acp.services.feed.runner import FeedRunner
 from acp.sim.scenario import load_scenario
 
@@ -80,6 +82,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     settings = load_settings()
     configure_logging("feed", settings.log_level)
+    configure_tracing("acp-feed", settings.otlp_endpoint)
+    serve_metrics(settings.metrics_port)
     try:
         asyncio.run(run(args))
     except KeyboardInterrupt:

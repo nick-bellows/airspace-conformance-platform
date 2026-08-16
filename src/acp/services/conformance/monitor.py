@@ -56,7 +56,12 @@ from acp.ml.predictor import DEFAULT_MODELS_DIR, TrajectoryPredictor
 
 _log = get_logger(__name__)
 
-MONITOR_VERSION = "acp-conformance-monitor-v1"
+# There is deliberately no MONITOR_VERSION constant here. `DETECTOR_VERSION`,
+# `SIM_VERSION`, and the rest exist because `eval/run_conflict_eval.py` stamps
+# them into a committed report, so a stale result is identifiable. Conformance
+# monitoring has no such report yet, so a version constant would have been
+# provenance-shaped decoration with nothing consuming it. Add one when there is
+# a report to stamp.
 
 #: How far ahead predictions are made and later checked.
 DEFAULT_HORIZON_S = 60.0

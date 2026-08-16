@@ -214,6 +214,49 @@ From `eval/results/trajectory_prediction.md` and the
 
 ---
 
+## 5a. Observability and deployment
+
+- **Traces are sampled at 100% and metrics carry unbounded-in-principle
+  labels.** Both are fine at four aircraft and wrong at real volume. Sampling is
+  one configuration change; a `partition` label on consumer lag is bounded by
+  the topic's six partitions, but nothing enforces that a future label stays
+  bounded, and an unbounded label is the standard way to fall over a Prometheus
+  server.
+- **Metrics are per process, and processes are not aggregated for correctness.**
+  `acp_live_tracks` from two tracker replicas is two partial pictures, not one
+  number; the dashboard uses `max()` where a sum would mislead, which works for
+  the current topology and would need revisiting under real sharding.
+- **Nothing alerts.** Prometheus is configured to scrape and Grafana to draw.
+  There are no alerting rules, no Alertmanager, and no on-call anything, so
+  "consumer lag is climbing" is visible only to someone looking at the page.
+- **Kubernetes runs infrastructure as Deployments with ephemeral storage.** A
+  Postgres pod restart loses track history. StatefulSets with volume claims
+  would imply a durability this stack does not have, so the weaker thing is
+  stated rather than the stronger thing implied.
+- **The Postgres password is committed**, in `deploy/k8s/10-config.yaml` and
+  `deploy/compose.yml`, so a clean checkout runs. It guards synthetic data on a
+  loopback-bound port, and it is the wrong pattern for anything real. gitleaks
+  is configured to allow that one literal and nothing else, so a *different*
+  credential committed to the same file still fails the build.
+- **There is no Ingress, NetworkPolicy, TLS, or authentication anywhere.** The
+  API is unauthenticated by design at this stage; the WebSocket origin check
+  exists because it becomes a Cross-Site WebSocket Hijacking vulnerability the
+  moment authentication is added, and the mitigation belongs in place before
+  then rather than after.
+- **The `kind` job proves the manifests start and pass traffic, not that they
+  are production-shaped.** No resource pressure, no node failure, no rolling
+  update under load, no HPA.
+- **`--strict` is not used with pip-audit**, because it would fail on the
+  deliberate skip of the editable project itself. Torch is not audited by
+  pip-audit at all — the CPU-only wheel carries a `+cpu` local version that does
+  not exist on PyPI — and is covered by the Trivy image scan instead. That is a
+  different tool with a different database, not an equivalent one.
+- **Trivy's deployment-config scan is informational.** It encodes opinions this
+  stack has deliberately declined, and failing on them would mean either arguing
+  with the tool in configuration or pretending the decisions were not made.
+
+---
+
 ## 6. What is measured, and where
 
 | Claim | Evidence | Caveat |
@@ -226,13 +269,17 @@ From `eval/results/trajectory_prediction.md` and the
 | Conformance monitoring detects a real divergence | `tests/unit/test_conformance_monitor.py`, live run | Threshold not swept |
 | The filter reduces position error | `tests/unit/test_kalman.py` | Against the simulator's noise model only |
 | Services do not import each other | `tests/unit/test_architecture.py` | Static import graph; says nothing about runtime coupling |
-| Idempotent writes under redelivery | `tests/unit/test_runners.py`, live database check | Not yet tested against real consumer restarts (M5) |
+| Idempotent writes under redelivery | `tests/unit/test_runners.py`, `tests/integration/` | Real consumer restart against the real constraint |
 | Committed reports match their inputs | `tests/unit/test_generator.py` fingerprint | Covers NOMINAL only |
 | The API obeys its own OpenAPI spec | `tests/contract/test_openapi.py` (schemathesis) | Fake stores; HTTP layer only |
 | Schema changes stay backward compatible | `tests/contract/test_compatibility.py` | Diffs against HEAD, not a release tag |
 | Partition assignment, consumer resume, idempotency | `tests/integration/` on real containers | Same image versions as compose |
 | End-to-end pipeline works | `tests/e2e/` under docker compose | Single-node, one scenario |
 | Throughput at 500 aircraft | `tests/perf/`, `latency-budget.md` | Compute path only; no transport |
+| Observability degrades without its extra | `degradation` CI job, `tests/unit/test_metrics.py`, `test_tracing.py` | Proves the fallback runs, not that it is equivalent |
+| A trace crosses three services | `tests/unit/test_tracing.py` round trip; observed in Jaeger | Header round trip in test; the live check is manual |
+| The manifests start and pass traffic | `k8s` CI job on a `kind` cluster | Single node, no load, no failure injection |
+| Deployment artefacts agree with the code | `tests/unit/test_deployment.py` | Static agreement; says nothing about whether the values are right |
 
 No metric appears in the README until its runner is committed and reproducible
 from a recorded seed.

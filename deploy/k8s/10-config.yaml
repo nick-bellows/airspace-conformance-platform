@@ -1,0 +1,43 @@
+# One ConfigMap for every service.
+#
+# The services read the same `ACP_*` environment variables here that they read
+# under docker compose, so there is exactly one definition of what is
+# configurable and the two deployments cannot drift apart.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: acp-config
+  namespace: acp
+data:
+  ACP_KAFKA_BOOTSTRAP_SERVERS: "redpanda:9092"
+  ACP_REDIS_URL: "redis://redis:6379/0"
+  ACP_LOG_LEVEL: "INFO"
+  ACP_API_PORT: "8000"
+  ACP_HORIZONTAL_SEPARATION_NM: "5.0"
+  ACP_VERTICAL_SEPARATION_FT: "1000.0"
+  ACP_CONFLICT_LOOKAHEAD_S: "300.0"
+  # Empty disables tracing. Point it at a collector (e.g.
+  # http://jaeger:4318/v1/traces) to turn it on without rebuilding anything.
+  ACP_OTLP_ENDPOINT: ""
+  # Port the worker services expose /metrics on. One value for all three is
+  # fine: each pod has its own IP. Must match the containerPort and the
+  # prometheus.io/port annotation in 30-services.yaml.
+  ACP_METRICS_PORT: "9464"
+---
+# A development credential for a system holding synthetic data, committed
+# deliberately so `kubectl apply -f deploy/k8s/` works from a clean checkout.
+#
+# This is the wrong pattern for anything real: a production deployment sources
+# this from a secret store and never has it in version control. Called out here
+# and in docs/limitations.md rather than left for a reader to notice.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: acp-postgres
+  namespace: acp
+type: Opaque
+stringData:
+  POSTGRES_USER: acp
+  POSTGRES_PASSWORD: acp
+  POSTGRES_DB: acp
+  ACP_POSTGRES_DSN: "postgresql+asyncpg://acp:acp@postgres:5432/acp"

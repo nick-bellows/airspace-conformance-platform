@@ -82,10 +82,26 @@ Worth recording, because "AI wrote it and it was fine" is not a useful account.
   bucket, making the model look useless. Then a second attempt merged turns with
   climbs, burying 907 hard samples under 3,121 easy ones. Both were caught by
   looking at the sample counts and asking whether they were plausible.
+- **A documented gap was preferred to fixing the gap.** The first version of the
+  Prometheus scrape config explained, at some length and quite convincingly, that
+  the three worker services could not be scraped because they have no HTTP
+  surface, and that this was written down honestly rather than papered over.
+  Writing that paragraph made it obvious the honest thing was a background
+  exposition server, not a paragraph. Documenting a limitation is not a
+  substitute for removing one, and prose that argues well for its own constraints
+  is a smell rather than a virtue.
+- **A test's wait condition did not match its assertion**, and the mismatch was
+  invisible for two milestones because the timing happened to work out. It waited
+  for an endpoint to respond and then asserted on ten rows of data. Reading it
+  would not have caught it; running it on a slower day did.
 
 The pattern is consistent: the errors were not in code that fails loudly, but in
 reasoning that produces a number or a sentence which looks right. The defence is
-to make as many claims as possible executable.
+to make as many claims as possible executable — and, at M5, to *run the thing*.
+Three of that milestone's defects were found by bringing the stack up and looking
+at it, not by any test: Postgres reporting healthy before it was listening,
+Jaeger showing three services when it should have shown four, and a shipped image
+that would have been built without the observability extra it needs.
 
 ## What this does not claim
 

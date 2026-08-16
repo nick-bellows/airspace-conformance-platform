@@ -1,0 +1,40 @@
+# gitleaks configuration.
+#
+# Starts from the upstream rule set rather than replacing it -- a hand-written
+# list of patterns is a list of the leaks someone already thought of.
+#
+# The allowlist below covers the one thing in this repository that looks like a
+# credential and is one: the development Postgres password. It is committed on
+# purpose so `docker compose up` and `kubectl apply -f deploy/k8s/` work from a
+# clean checkout, and it is wrong for anything real. Suppressing it here rather
+# than letting the scan go red every run is the difference between a signal and
+# a habit of ignoring one; the decision itself is argued in deploy/k8s/README.md
+# and docs/limitations.md, not hidden in this file.
+
+title = "airspace-conformance-platform"
+
+[extend]
+useDefault = true
+
+[[rules]]
+  # Belt and braces on top of the default rules: the project's own naming, so a
+  # real key committed under an ACP-prefixed name is caught even if it does not
+  # match a vendor-specific pattern.
+  id = "acp-generic-secret"
+  description = "ACP-prefixed environment variable holding something secret-shaped"
+  regex = '''(?i)ACP_[A-Z0-9_]*(SECRET|TOKEN|PASSWORD|API_?KEY)\s*[:=]\s*['"]?[A-Za-z0-9+/._-]{12,}'''
+  tags = ["acp", "generic"]
+
+[allowlist]
+  description = "The one development credential, allowed by value and not by location"
+  # Deliberately no `paths` entry. Allowlisting whole directories -- `tests/`,
+  # `docs/`, `deploy/` -- would have been shorter and would have created blind
+  # spots exactly where a real credential is most likely to be pasted while
+  # debugging. These regexes match the single committed development password
+  # and nothing else, so a *different* secret added to any of the same files
+  # still fails the scan.
+  regexes = [
+    '''postgresql\+asyncpg://acp:acp@''',
+    '''POSTGRES_PASSWORD:\s*acp\b''',
+    '''POSTGRES_PASSWORD:\s*["']?acp["']?\s*#''',
+  ]

@@ -12,6 +12,8 @@ from acp.common.config import load_settings
 from acp.common.contracts import TOPIC_SURVEILLANCE_REPORTS, SurveillanceReport
 from acp.common.logging import configure_logging, get_logger
 from acp.common.messaging import MessagePublisher, MessageSubscriber
+from acp.common.metrics import serve_metrics
+from acp.common.tracing import configure_tracing
 from acp.services.track.runner import TrackRunner
 from acp.storage.stores import LiveTrackStore, TrackHistoryStore
 
@@ -57,6 +59,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     settings = load_settings()
     configure_logging("track", settings.log_level)
+    configure_tracing("acp-track", settings.otlp_endpoint)
+    serve_metrics(settings.metrics_port)
     try:
         asyncio.run(run(args))
     except KeyboardInterrupt:

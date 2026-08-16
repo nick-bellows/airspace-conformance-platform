@@ -1,0 +1,133 @@
+# Redpanda, Postgres, and Redis.
+#
+# Deployments with ephemeral storage rather than StatefulSets with volume
+# claims. That is the right call for a demonstration stack and the wrong one for
+# production, so it is stated here rather than implied: a pod restart loses
+# track history. A StatefulSet would imply durability this does not have.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redpanda
+  namespace: acp
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: redpanda }
+  template:
+    metadata:
+      labels: { app: redpanda }
+    spec:
+      containers:
+        - name: redpanda
+          image: redpandadata/redpanda:v26.1.16
+          args:
+            - redpanda
+            - start
+            - --mode=dev-container
+            - --smp=1
+            - --default-log-level=warn
+            - --kafka-addr=internal://0.0.0.0:9092
+            - --advertise-kafka-addr=internal://redpanda:9092
+          ports:
+            - { containerPort: 9092, name: kafka }
+            - { containerPort: 9644, name: admin }
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "rpk cluster health | grep -q 'Healthy:.*true'"]
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            failureThreshold: 30
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redpanda
+  namespace: acp
+spec:
+  selector: { app: redpanda }
+  ports:
+    - { name: kafka, port: 9092, targetPort: 9092 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: acp
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: postgres }
+  template:
+    metadata:
+      labels: { app: postgres }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17.11-alpine
+          envFrom:
+            - secretRef: { name: acp-postgres }
+          ports:
+            - { containerPort: 5432 }
+          readinessProbe:
+            # `-h 127.0.0.1` for the same reason as the compose healthcheck: on
+            # a fresh volume Postgres runs an init-time server bound to the Unix
+            # socket only, so a socket probe reports ready while every TCP
+            # client is still refused.
+            exec: { command: ["pg_isready", "-h", "127.0.0.1", "-U", "acp", "-d", "acp"] }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 20
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: acp
+spec:
+  selector: { app: postgres }
+  ports:
+    - { port: 5432, targetPort: 5432 }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis
+  namespace: acp
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: redis }
+  template:
+    metadata:
+      labels: { app: redis }
+    spec:
+      containers:
+        - name: redis
+          image: redis:8.10
+          args: ["redis-server", "--save", "", "--appendonly", "no"]
+          ports:
+            - { containerPort: 6379 }
+          readinessProbe:
+            exec: { command: ["redis-cli", "ping"] }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+            failureThreshold: 20
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 250m, memory: 256Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis
+  namespace: acp
+spec:
+  selector: { app: redis }
+  ports:
+    - { port: 6379, targetPort: 6379 }

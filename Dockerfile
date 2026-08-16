@@ -30,11 +30,16 @@ COPY src ./src
 # with the CUDA one from PyPI the moment a version bump made the pinned range
 # resolve differently, and a two-gigabyte image change is not something to
 # discover in a release.
+# `observability` is in the shipped image, not left to a sidecar. Without it
+# every metric is a no-op and every span is dropped, so the Prometheus and
+# Jaeger profiles in deploy/compose.yml would come up scraping a system that
+# has nothing to say. The code still degrades if it is ever removed -- that is
+# tested by a separate CI job -- but the default deployment is instrumented.
 RUN python -m venv /opt/venv \
     && /opt/venv/bin/pip install --upgrade pip \
     && /opt/venv/bin/pip install \
         --extra-index-url https://download.pytorch.org/whl/cpu \
-        ".[messaging,storage,api,ml]"
+        ".[messaging,storage,api,ml,observability]"
 
 
 FROM python:3.13-slim AS runtime

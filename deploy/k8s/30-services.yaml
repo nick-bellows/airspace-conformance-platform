@@ -1,0 +1,237 @@
+# The four application services, plus the migration that must run before any of
+# them touches Postgres.
+#
+# Every pod runs as the non-root user baked into the image, with a read-only
+# root filesystem and all capabilities dropped. Those are cheap to set at the
+# start and expensive to retrofit once something has started writing to /tmp.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: migrate
+  namespace: acp
+  annotations:
+    # Re-applying the manifests re-runs the migration. Alembic is idempotent
+    # against an already-migrated database, so this is safe and it means a
+    # deployment can never start against a stale schema.
+    acp.dev/description: "Alembic upgrade head; every Postgres consumer waits on it"
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels: { app: migrate }
+    spec:
+      restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: migrate
+          image: acp:dev
+          imagePullPolicy: IfNotPresent
+          command: ["alembic", "upgrade", "head"]
+          envFrom:
+            - configMapRef: { name: acp-config }
+            - secretRef: { name: acp-postgres }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: feed
+  namespace: acp
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: feed }
+  template:
+    metadata:
+      labels: { app: feed }
+      # The workers have no Service in front of them -- nothing calls them, they
+      # consume Kafka. Prometheus finds them by pod annotation instead, which is
+      # the standard discovery route for a workload that is not addressable.
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9464"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: feed
+          image: acp:dev
+          imagePullPolicy: IfNotPresent
+          args:
+            - acp-feed
+            - --scenario=scenarios/head-on-conflict.yaml
+            - --loop
+          envFrom:
+            - configMapRef: { name: acp-config }
+          ports:
+            - { containerPort: 9464, name: metrics }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: track
+  namespace: acp
+spec:
+  # The one service that genuinely scales out. Reports are keyed by aircraft
+  # address, so Kafka assigns partitions across the consumer group and each
+  # aircraft stays with one replica, keeping its ordering. Topics are created
+  # with 6 partitions, so this is useful up to 6.
+  replicas: 2
+  selector:
+    matchLabels: { app: track }
+  template:
+    metadata:
+      labels: { app: track }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9464"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: track
+          image: acp:dev
+          imagePullPolicy: IfNotPresent
+          args: ["acp-track"]
+          envFrom:
+            - configMapRef: { name: acp-config }
+            - secretRef: { name: acp-postgres }
+          ports:
+            - { containerPort: 9464, name: metrics }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 200m, memory: 512Mi }
+            limits: { cpu: "1", memory: 1Gi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: conformance
+  namespace: acp
+spec:
+  # Deliberately one. Every replica would hold the whole airspace picture and
+  # publish duplicate alerts -- this service does not shard, and pretending
+  # otherwise by raising the count would produce a visibly wrong system. See
+  # docs/limitations.md.
+  replicas: 1
+  selector:
+    matchLabels: { app: conformance }
+  template:
+    metadata:
+      labels: { app: conformance }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9464"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: conformance
+          image: acp:dev
+          imagePullPolicy: IfNotPresent
+          args: ["acp-conformance"]
+          envFrom:
+            - configMapRef: { name: acp-config }
+          ports:
+            - { containerPort: 9464, name: metrics }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 200m, memory: 768Mi }
+            limits: { cpu: "1", memory: 1536Mi }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  namespace: acp
+spec:
+  # Stateless: holds no state and consumes no Kafka, so it scales with viewers
+  # independently of everything else.
+  replicas: 2
+  selector:
+    matchLabels: { app: api }
+  template:
+    metadata:
+      labels: { app: api }
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8000"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: api
+          image: acp:dev
+          imagePullPolicy: IfNotPresent
+          command: ["python", "-m", "acp.services.api.app"]
+          envFrom:
+            - configMapRef: { name: acp-config }
+            - secretRef: { name: acp-postgres }
+          ports:
+            - { containerPort: 8000, name: http }
+          # Liveness checks nothing external. A readiness-style dependency check
+          # here would restart the pod every time Postgres hiccupped, turning a
+          # recoverable blip into a crash loop that fixes nothing.
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+            failureThreshold: 3
+          # Readiness does check, so a pod with a broken dependency leaves the
+          # Service without being killed.
+          readinessProbe:
+            httpGet: { path: /ready, port: http }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 500m, memory: 512Mi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  namespace: acp
+spec:
+  selector: { app: api }
+  ports:
+    - { name: http, port: 8000, targetPort: 8000 }

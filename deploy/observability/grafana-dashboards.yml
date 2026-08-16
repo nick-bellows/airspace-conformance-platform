@@ -1,0 +1,20 @@
+# Grafana dashboard provisioning.
+#
+# `allowUiUpdates: false` is deliberate. The dashboard is a committed artefact
+# in this repo; letting the UI edit it would produce a live dashboard that no
+# longer matches the JSON anyone reviews, and the drift would be invisible.
+# Editing it means editing dashboard.json and restarting Grafana.
+
+apiVersion: 1
+
+providers:
+  - name: acp
+    orgId: 1
+    folder: ""
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

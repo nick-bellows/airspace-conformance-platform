@@ -15,8 +15,6 @@ from dataclasses import dataclass
 
 from acp.common.contracts import AlertKind, Severity, TrackUpdate
 
-RULES_VERSION = "acp-rules-v1"
-
 #: Transponder codes reserved worldwide for emergencies. A pilot squawking one
 #: of these has declared something; there is no interpretation involved.
 EMERGENCY_SQUAWKS = {

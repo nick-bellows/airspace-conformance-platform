@@ -152,10 +152,20 @@ def test_aircraft_appear_on_the_live_picture(stack: None) -> None:
 
 
 def test_track_history_reaches_postgres(stack: None) -> None:
+    # The wait predicate has to be the same condition as the assertion. It was
+    # not: it waited for the endpoint to *respond*, which happens as soon as one
+    # row exists, and then asserted on ten. That passed for as long as the
+    # stack happened to take longer to come up than the tracker took to write
+    # ten rows, and failed the first time the ordering went the other way --
+    # a flake that would have been blamed on CI rather than on the test.
     history = wait_until(
-        lambda: api_get("/v1/tracks/trk-a1b2c3/history?limit=50"),
+        lambda: (
+            found
+            if (found := api_get("/v1/tracks/trk-a1b2c3/history?limit=50"))["count"] > 10
+            else None
+        ),
         timeout_s=120,
-        description="track history to be persisted",
+        description="at least ten history points to be persisted",
     )
     assert history["count"] > 10
     observed = [point["observed_at"] for point in history["points"]]

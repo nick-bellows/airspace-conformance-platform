@@ -219,6 +219,12 @@ upsert.
 - **The e2e verification was done by hand.** The numbers above were checked
   against a running stack manually. Automating that is M4.
 
+> **Since resolved.** This is a record of M1, not of the current state. The
+> coverage exclusions were deleted at M4 when the integration suite landed — the
+> fast gate now has none — and consumer-group rebalance and the end-to-end path
+> are both automated. `README.md` and `docs/limitations.md` describe what is true
+> now.
+
 ## Questions a reviewer might ask
 
 **"Why Redis *and* Postgres? Isn't one enough?"**

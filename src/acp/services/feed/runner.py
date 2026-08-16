@@ -22,6 +22,7 @@ from datetime import UTC, datetime
 from acp.common.contracts import TOPIC_SIM_TRUTH, TOPIC_SURVEILLANCE_REPORTS
 from acp.common.logging import get_logger, trace_id_var
 from acp.common.messaging import MessagePublisher
+from acp.common.tracing import span
 from acp.sim.engine import Simulation
 from acp.sim.scenario import Scenario
 
@@ -108,9 +109,18 @@ class FeedRunner:
             # because of this observation carries it, across three services.
             token = trace_id_var.set(uuid.uuid4().hex)
             try:
-                await self._publisher.publish(
-                    TOPIC_SURVEILLANCE_REPORTS, key=report.icao24, message=report
-                )
+                # The span has to be opened *here*, not in the publisher. A
+                # `traceparent` header can only carry a context that already
+                # exists, so with no span open at the edge the trace begins at
+                # whichever service first consumes the message -- which is what
+                # happened on the first run of the observability stack: Jaeger
+                # showed `acp-track` and `acp-conformance` and no feed at all,
+                # making the one interval anybody actually wants to measure
+                # (report emitted -> alert raised) the one interval missing.
+                with span("publish report", icao24=report.icao24):
+                    await self._publisher.publish(
+                        TOPIC_SURVEILLANCE_REPORTS, key=report.icao24, message=report
+                    )
                 count += 1
             finally:
                 trace_id_var.reset(token)

@@ -13,6 +13,8 @@ from acp.common.config import load_settings
 from acp.common.contracts import TOPIC_TRACK_UPDATES, TrackUpdate
 from acp.common.logging import configure_logging, get_logger
 from acp.common.messaging import MessagePublisher, MessageSubscriber
+from acp.common.metrics import METRICS, serve_metrics
+from acp.common.tracing import configure_tracing
 from acp.ml.predictor import DEFAULT_MODELS_DIR, TrajectoryPredictor
 from acp.services.conformance.monitor import DEFAULT_HORIZON_S, ConformanceMonitor
 from acp.services.conformance.runner import DEFAULT_SCAN_INTERVAL_S, ConformanceRunner
@@ -79,6 +81,10 @@ async def run(args: argparse.Namespace) -> None:
                 "model_loaded": predictor.has_model,
             },
         )
+        # Also a gauge, so "we have been running on physics for three weeks" is
+        # visible on a dashboard rather than only in a startup line nobody has
+        # scrolled back to.
+        METRICS.model_loaded.labels(service="conformance").set(1 if predictor.has_model else 0)
 
     async with (
         MessageSubscriber(
@@ -122,6 +128,8 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     settings = load_settings()
     configure_logging("conformance", settings.log_level)
+    configure_tracing("acp-conformance", settings.otlp_endpoint)
+    serve_metrics(settings.metrics_port)
     try:
         asyncio.run(run(args))
     except KeyboardInterrupt:

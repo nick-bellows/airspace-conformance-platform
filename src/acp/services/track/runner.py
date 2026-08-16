@@ -30,6 +30,8 @@ from acp.common.contracts import (
 )
 from acp.common.logging import get_logger
 from acp.common.messaging import MessagePublisher, MessageSubscriber
+from acp.common.metrics import METRICS
+from acp.common.tracing import span
 from acp.services.track.estimator import TrackEstimator
 from acp.storage.stores import LiveTrackStore, TrackHistoryStore
 
@@ -38,7 +40,12 @@ _log = get_logger(__name__)
 
 @dataclass(frozen=True, slots=True)
 class TrackerStats:
-    """Counters for logging and, at M5, for Prometheus."""
+    """End-of-run totals for the shutdown log line.
+
+    Not the same thing as the Prometheus counters in `acp.common.metrics`.
+    Those are live and scrapeable; these summarise one run and are what the
+    tests assert on.
+    """
 
     reports_consumed: int
     updates_published: int
@@ -100,7 +107,13 @@ class TrackRunner:
 
     async def _handle(self, report: SurveillanceReport) -> None:
         self._reports += 1
-        update = self._estimator.on_report(report)
+        METRICS.reports_consumed.labels(service="track").inc()
+        with (
+            METRICS.time(METRICS.pipeline_latency, "track"),
+            span("estimate", icao24=report.icao24),
+        ):
+            update = self._estimator.on_report(report)
+        METRICS.live_tracks.labels(service="track").set(self._estimator.live_track_count)
         await self._publish(update)
         self._pending.append(update)
 
@@ -113,6 +126,7 @@ class TrackRunner:
         # downstream consumer sees one aircraft's updates in order too.
         await self._publisher.publish(TOPIC_TRACK_UPDATES, key=update.icao24, message=update)
         self._published += 1
+        METRICS.track_updates_published.labels(service="track").inc()
 
     async def _flush(self) -> None:
         if not self._pending:

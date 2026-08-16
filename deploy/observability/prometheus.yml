@@ -1,0 +1,45 @@
+# Scrape configuration for the development stack.
+#
+# The API serves /metrics on its own HTTP port because it already has one. The
+# three worker services do not: they consume Kafka and publish to it, and have
+# no HTTP surface of their own. They start a small exposition server on a
+# background thread (ACP_METRICS_PORT, default 9464) purely so their counters
+# can be reached.
+#
+# The alternative was to leave them unscrapeable and write the gap down. That
+# was rejected: instrumented-but-unreachable counters look like observability
+# while being useless, which is worse than no instrumentation at all.
+#
+# One port number serves all three because each runs in its own network
+# namespace. Under compose the container name disambiguates them; in Kubernetes
+# the pod IP does.
+
+global:
+  scrape_interval: 5s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: acp-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api:8000"]
+        labels:
+          service: api
+
+  # The three workers. `honor_labels` is deliberately left off: the `service`
+  # label below is Prometheus's view of where the sample came from, and the
+  # metrics themselves also carry a `service` label set by the application. They
+  # agree today, and if they ever disagree the target label is the one to trust.
+  - job_name: acp-workers
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["feed:9464"]
+        labels: { service: feed }
+      - targets: ["track:9464"]
+        labels: { service: track }
+      - targets: ["conformance:9464"]
+        labels: { service: conformance }
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

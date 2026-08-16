@@ -25,6 +25,7 @@ import numpy as np
 
 from acp.common.contracts import TrackUpdate
 from acp.common.logging import get_logger
+from acp.common.metrics import METRICS
 from acp.ml.baselines import Prediction, apply_along_cross, dead_reckon
 from acp.ml.features import WINDOW, extract, state_from
 from acp.ml.models import MODEL_VERSION, ResidualModel, RidgeResidualModel
@@ -125,6 +126,14 @@ class TrajectoryPredictor:
 
     def predict(self, window: Sequence[TrackUpdate]) -> TrajectoryPrediction:
         """Predict where the aircraft in this window will be at the horizon."""
+        prediction = self._predict(window)
+        # Counted by source, because a permanent silent fallback to physics is
+        # exactly the degradation that goes unnoticed for months. A dashboard
+        # showing 100% `dead_reckoning` is the signal.
+        METRICS.predictions.labels(service="conformance", source=prediction.source).inc()
+        return prediction
+
+    def _predict(self, window: Sequence[TrackUpdate]) -> TrajectoryPrediction:
         current = window[-1]
         baseline = dead_reckon(state_from(current), self._horizon_s)
 

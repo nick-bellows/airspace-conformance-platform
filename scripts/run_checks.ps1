@@ -10,7 +10,7 @@ Set-Location $repoRoot
 $python = Join-Path $repoRoot ".venv\Scripts\python.exe"
 if (-not (Test-Path $python)) {
     Write-Host "No .venv found. Create one with:" -ForegroundColor Yellow
-    Write-Host "  python -m venv .venv; .\.venv\Scripts\python.exe -m pip install -e `".[dev]`""
+    Write-Host "  python -m venv .venv; .\.venv\Scripts\python.exe -m pip install -e `".[all]`""
     exit 1
 }
 

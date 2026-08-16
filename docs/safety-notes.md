@@ -1,6 +1,7 @@
 # Safety notes
 
-Status: `draft` — the scope statement below is final; the metrics it refers to arrive at M2.
+Status: the scope statement below is final and is not expected to change. The
+metrics it qualifies are committed in [`eval/results/`](../eval/results/).
 
 ## What this system is
 
@@ -43,8 +44,7 @@ saying so plainly costs nothing and prevents a genuine misunderstanding.
 
 ## Limits that affect the numbers
 
-These are summarised here and treated in full in `docs/limitations.md` once
-there are metrics to qualify:
+Summarised here and treated in full in [`limitations.md`](limitations.md):
 
 1. Results are measured on synthetic traffic. They characterise the algorithms
    and the pipeline, not real-world performance.

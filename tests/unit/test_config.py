@@ -61,5 +61,17 @@ def test_nonsensical_separation_standards_fail_at_startup(
 
 
 def test_load_settings_reads_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("ACP_SERVICE_NAME", "track")
-    assert load_settings().service_name == "track"
+    monkeypatch.setenv("ACP_LOG_LEVEL", "DEBUG")
+    assert load_settings().log_level == "DEBUG"
+
+
+def test_the_metrics_port_must_be_a_real_port(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A typo'd port fails at startup rather than silently never being scraped."""
+    monkeypatch.setenv("ACP_METRICS_PORT", "70000")
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None)  # type: ignore[call-arg]
+
+
+def test_tracing_is_off_by_default() -> None:
+    """No collector configured is the ordinary local state, not a misconfiguration."""
+    assert Settings(_env_file=None).otlp_endpoint == ""  # type: ignore[call-arg]

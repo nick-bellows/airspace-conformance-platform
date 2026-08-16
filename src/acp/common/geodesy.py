@@ -46,7 +46,6 @@ import math
 
 #: Mean earth radius, converted from 6 371 008.8 m at 1852 m per nautical mile.
 EARTH_RADIUS_NM = 3440.0695
-FEET_PER_NM = 6076.11549
 SECONDS_PER_MINUTE = 60.0
 
 
