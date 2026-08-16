@@ -50,8 +50,10 @@ recorded for them stays valid. Tested directly
 Two scenarios ship, and the pair matters:
 
 - `head-on-conflict.yaml` — the conflict, plus two aircraft that fly nearby
-  without conflicting. One of them is laterally close but 4,000 ft above; a
-  detector that ignores altitude will fire on it.
+  without conflicting. One of them passes within 0.2 NM of the pair at the
+  moment they meet, but 4,000 ft above; a detector that ignores altitude fires
+  on it. That was only made true after M6 — as written here it was aspiration,
+  and the aircraft was 18.8 NM clear.
 - `quiet-cruise.yaml` — six well-separated aircraft, no conflict anywhere. This
   is the **false-alarm control.** Precision is meaningless if the detector has
   only ever been shown conflicts, because a detector that always fires would

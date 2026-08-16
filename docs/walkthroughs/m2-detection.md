@@ -18,9 +18,15 @@ seconds of warning — and raises a false alarm roughly once per airspace hour.
 ```
 
 Wait about three minutes. ACP101 and ACP202 get ringed in red on the scope and an
-advisory appears in the panel. ACP303, which is laterally close but 4,000 ft
-above, stays green — that aircraft is in the scenario specifically to catch a
-detector that forgets to check altitude.
+advisory appears in the panel. ACP303 stays green — that aircraft is in the
+scenario specifically to catch a detector that forgets to check altitude, and at
+T+7:58 it passes within 0.2 NM of both, 4,000 ft above.
+
+> That last sentence was false for most of this project's life. ACP303 was
+> placed on the crossing point but arrived 223 seconds early, so it never came
+> within 18.8 NM and a detector with the altitude logic deleted still passed
+> every test. Found and fixed after M6 by deleting that logic to see what
+> failed; nothing did. See `tests/unit/test_scenarios.py`.
 
 Verified on this machine at the end of M2: 4 tracks, 1 active alert reading
 *"predicted separation 0.3 NM / 16 ft in 289 s"*, zero `ERROR` lines across seven
