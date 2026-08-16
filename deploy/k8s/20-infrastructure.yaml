@@ -38,7 +38,7 @@ spec:
             periodSeconds: 5
             failureThreshold: 30
           resources:
-            requests: { cpu: 200m, memory: 512Mi }
+            requests: { cpu: 100m, memory: 384Mi }
             limits: { cpu: "1", memory: 1Gi }
 ---
 apiVersion: v1
@@ -81,7 +81,7 @@ spec:
             periodSeconds: 5
             failureThreshold: 20
           resources:
-            requests: { cpu: 100m, memory: 256Mi }
+            requests: { cpu: 50m, memory: 192Mi }
             limits: { cpu: 500m, memory: 512Mi }
 ---
 apiVersion: v1
@@ -119,7 +119,7 @@ spec:
             periodSeconds: 5
             failureThreshold: 20
           resources:
-            requests: { cpu: 50m, memory: 64Mi }
+            requests: { cpu: 25m, memory: 64Mi }
             limits: { cpu: 250m, memory: 256Mi }
 ---
 apiVersion: v1

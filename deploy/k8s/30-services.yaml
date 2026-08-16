@@ -4,6 +4,15 @@
 # Every pod runs as the non-root user baked into the image, with a read-only
 # root filesystem and all capabilities dropped. Those are cheap to set at the
 # start and expensive to retrofit once something has started writing to /tmp.
+#
+# CPU requests are sized for the traffic this stack actually carries -- four
+# aircraft at 1 Hz -- not for the 500-aircraft figure in the latency budget.
+# They were originally set from the latter, which totalled about 1250m of
+# requests; on a two-core runner, with kube-system already holding roughly
+# 950m, the second tracker replica could not be scheduled at all and the `k8s`
+# job failed with `Insufficient cpu`. A request is a scheduling promise, and
+# promising more than the workload uses buys nothing and costs a replica.
+# Limits are unchanged: they cap burst and play no part in scheduling.
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -52,7 +61,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
+            requests: { cpu: 25m, memory: 96Mi }
             limits: { cpu: 500m, memory: 512Mi }
 ---
 apiVersion: apps/v1
@@ -95,7 +104,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
+            requests: { cpu: 25m, memory: 96Mi }
             limits: { cpu: 250m, memory: 256Mi }
       containers:
         - name: feed
@@ -114,7 +123,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
-            requests: { cpu: 100m, memory: 256Mi }
+            requests: { cpu: 50m, memory: 192Mi }
             limits: { cpu: 500m, memory: 512Mi }
 ---
 apiVersion: apps/v1
@@ -161,7 +170,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
+            requests: { cpu: 25m, memory: 96Mi }
             limits: { cpu: 250m, memory: 256Mi }
         - name: wait-for-schema
           image: acp:dev
@@ -175,7 +184,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
+            requests: { cpu: 25m, memory: 96Mi }
             limits: { cpu: 250m, memory: 256Mi }
       containers:
         - name: track
@@ -192,7 +201,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
-            requests: { cpu: 200m, memory: 512Mi }
+            requests: { cpu: 100m, memory: 384Mi }
             limits: { cpu: "1", memory: 1Gi }
 ---
 apiVersion: apps/v1
@@ -236,7 +245,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
+            requests: { cpu: 25m, memory: 96Mi }
             limits: { cpu: 250m, memory: 256Mi }
       containers:
         - name: conformance
@@ -252,7 +261,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
-            requests: { cpu: 200m, memory: 768Mi }
+            requests: { cpu: 150m, memory: 640Mi }
             limits: { cpu: "1", memory: 1536Mi }
 ---
 apiVersion: apps/v1
@@ -293,7 +302,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
-            requests: { cpu: 50m, memory: 128Mi }
+            requests: { cpu: 25m, memory: 96Mi }
             limits: { cpu: 250m, memory: 256Mi }
       containers:
         - name: api
@@ -325,7 +334,7 @@ spec:
             readOnlyRootFilesystem: true
             capabilities: { drop: ["ALL"] }
           resources:
-            requests: { cpu: 100m, memory: 256Mi }
+            requests: { cpu: 50m, memory: 192Mi }
             limits: { cpu: 500m, memory: 512Mi }
 ---
 apiVersion: v1
