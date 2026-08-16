@@ -2,6 +2,8 @@
 
 [![quality](https://github.com/nick-bellows/airspace-conformance-platform/actions/workflows/quality.yml/badge.svg)](https://github.com/nick-bellows/airspace-conformance-platform/actions/workflows/quality.yml)
 
+**[▶ Live project page](https://nick-bellows.github.io/airspace-conformance-platform/)** — the system replayed in the browser, with the results and the caveats. No install required.
+
 Event-driven monitoring of simulated air traffic. Four services connected by
 Kafka turn noisy aircraft position reports into smoothed tracks and advisory
 safety alerts: predicted losses of separation, unmodelled maneuvers, and
