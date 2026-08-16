@@ -21,12 +21,17 @@ noted as a gap rather than pretended away.
 from __future__ import annotations
 
 import uuid
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from types import TracebackType
 from typing import Self
 
-from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
+from aiokafka import (
+    AIOKafkaConsumer,
+    AIOKafkaProducer,
+    ConsumerRebalanceListener,
+    TopicPartition,
+)
 from aiokafka.admin import AIOKafkaAdminClient, NewTopic
 from aiokafka.errors import TopicAlreadyExistsError
 from pydantic import BaseModel, ValidationError
@@ -120,6 +125,43 @@ class MessagePublisher:
         METRICS.messages_published.labels(service=self._client_id, topic=topic).inc()
 
 
+# `ignore[misc]` because aiokafka is untyped (see the mypy override in
+# pyproject.toml), so its base class arrives as `Any` and strict mode refuses to
+# subclass it. Subclassing is not optional here: `consumer.subscribe()` checks
+# `isinstance(listener, ConsumerRebalanceListener)` and rejects a duck type.
+class _RebalanceListener(ConsumerRebalanceListener):  # type: ignore[misc]
+    """Bridges Kafka's rebalance callbacks to a plain async hook.
+
+    Exists because ownership of a partition is *state*, not just a cursor. A
+    consumer that keeps per-key state -- the tracker keeps a Kalman filter per
+    aircraft -- must be told when the keys it owns change, or it will keep
+    acting on aircraft that now belong to somebody else. See ADR 0011.
+    """
+
+    def __init__(
+        self,
+        on_revoke: Callable[[frozenset[TopicPartition]], Awaitable[None]] | None,
+        on_assign: Callable[[frozenset[TopicPartition]], Awaitable[None]] | None,
+    ) -> None:
+        self._on_revoke = on_revoke
+        self._on_assign = on_assign
+
+    async def on_partitions_revoked(self, revoked: Sequence[TopicPartition]) -> None:
+        if self._on_revoke is not None and revoked:
+            await self._on_revoke(frozenset(revoked))
+
+    async def on_partitions_assigned(self, assigned: Sequence[TopicPartition]) -> None:
+        _log.info(
+            "partitions assigned",
+            extra={"partitions": sorted(f"{tp.topic}:{tp.partition}" for tp in assigned)},
+        )
+        # Not symmetry for its own sake: a consumer that only ever learns about
+        # revocation would keep discarding reports on a partition it had been
+        # given back.
+        if self._on_assign is not None and assigned:
+            await self._on_assign(frozenset(assigned))
+
+
 class MessageSubscriber[MessageT: BaseModel]:
     """Consumes and validates messages of one contract type from one topic."""
 
@@ -132,6 +174,8 @@ class MessageSubscriber[MessageT: BaseModel]:
         group_id: str,
         auto_offset_reset: str = "earliest",
         client_id: str = "acp",
+        on_revoke: Callable[[frozenset[TopicPartition]], Awaitable[None]] | None = None,
+        on_assign: Callable[[frozenset[TopicPartition]], Awaitable[None]] | None = None,
     ) -> None:
         self._bootstrap_servers = bootstrap_servers
         self._topic = topic
@@ -139,19 +183,49 @@ class MessageSubscriber[MessageT: BaseModel]:
         self._group_id = group_id
         self._auto_offset_reset = auto_offset_reset
         self._client_id = client_id
+        self._on_revoke = on_revoke
+        self._on_assign = on_assign
         self._consumer: AIOKafkaConsumer | None = None
 
     async def __aenter__(self) -> Self:
+        # Topics are supplied to `subscribe()` rather than to the constructor,
+        # because only `subscribe()` accepts a rebalance listener.
         self._consumer = AIOKafkaConsumer(
-            self._topic,
             bootstrap_servers=self._bootstrap_servers,
             group_id=self._group_id,
             client_id=self._client_id,
             enable_auto_commit=False,
             auto_offset_reset=self._auto_offset_reset,
         )
+        self._consumer.subscribe(
+            [self._topic],
+            listener=_RebalanceListener(self._release, self._on_assign),
+        )
         await self._consumer.start()
         return self
+
+    async def _release(self, revoked: frozenset[TopicPartition]) -> None:
+        """Drop metrics for revoked partitions, then hand off to the consumer.
+
+        The lag gauges have to go. A gauge is only ever *set*, so a replica that
+        loses a partition keeps exporting its last value for that partition
+        forever, and a `sum` across replicas then reports a backlog that no
+        consumer has. Clearing the label set here is the only place that can
+        know it has become meaningless.
+        """
+        for partition in revoked:
+            METRICS.forget(
+                METRICS.consumer_lag,
+                self._client_id,
+                partition.topic,
+                str(partition.partition),
+            )
+        _log.info(
+            "partitions revoked",
+            extra={"partitions": sorted(f"{tp.topic}:{tp.partition}" for tp in revoked)},
+        )
+        if self._on_revoke is not None:
+            await self._on_revoke(revoked)
 
     async def __aexit__(
         self,

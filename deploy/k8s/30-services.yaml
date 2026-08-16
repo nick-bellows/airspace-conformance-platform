@@ -10,12 +10,26 @@ metadata:
   name: migrate
   namespace: acp
   annotations:
-    # Re-applying the manifests re-runs the migration. Alembic is idempotent
-    # against an already-migrated database, so this is safe and it means a
-    # deployment can never start against a stale schema.
     acp.dev/description: "Alembic upgrade head; every Postgres consumer waits on it"
+    # This annotation used to claim that re-applying the manifests re-runs the
+    # migration. It does not, and an external review caught the claim. A
+    # completed Job stays completed; `kubectl apply` on it is a no-op, and
+    # editing its pod template fails outright because the template is immutable.
+    #
+    # Two things fix it, and both are needed:
+    #   * ttlSecondsAfterFinished below, so the Job object garbage-collects
+    #     itself and a later apply creates a genuinely new one;
+    #   * `kubectl delete job migrate --ignore-not-found` in the deploy
+    #     procedure, for the case where a redeploy happens inside the TTL.
+    #
+    # And regardless of either, no Deployment now trusts the ordering: they all
+    # wait on the schema themselves via an init container.
+    acp.dev/rerun: "requires delete; see deploy/k8s/README.md"
 spec:
   backoffLimit: 6
+  # Long enough to read the logs of a failed run, short enough that a redeploy
+  # the next morning creates a fresh Job rather than silently skipping it.
+  ttlSecondsAfterFinished: 600
   template:
     metadata:
       labels: { app: migrate }
@@ -110,6 +124,25 @@ spec:
         runAsNonRoot: true
         runAsUser: 1001
         seccompProfile: { type: RuntimeDefault }
+      # Kubernetes has no `depends_on: service_completed_successfully`, so the
+      # ordering compose gets for free has to be built here. This waits for the
+      # schema; it deliberately does not migrate, because two replicas racing
+      # `alembic upgrade head` is worse than either of them waiting.
+      initContainers:
+        - name: wait-for-schema
+          image: acp:dev
+          imagePullPolicy: IfNotPresent
+          args: ["acp-wait-for-schema"]
+          envFrom:
+            - configMapRef: { name: acp-config }
+            - secretRef: { name: acp-postgres }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 250m, memory: 256Mi }
       containers:
         - name: track
           image: acp:dev
@@ -193,6 +226,23 @@ spec:
         runAsNonRoot: true
         runAsUser: 1001
         seccompProfile: { type: RuntimeDefault }
+      # Same reason as the tracker: the API reads track history from Postgres,
+      # so it must not start against a schema that has not caught up.
+      initContainers:
+        - name: wait-for-schema
+          image: acp:dev
+          imagePullPolicy: IfNotPresent
+          args: ["acp-wait-for-schema"]
+          envFrom:
+            - configMapRef: { name: acp-config }
+            - secretRef: { name: acp-postgres }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 250m, memory: 256Mi }
       containers:
         - name: api
           image: acp:dev

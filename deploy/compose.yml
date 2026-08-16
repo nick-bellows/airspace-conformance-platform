@@ -70,7 +70,10 @@ services:
     image: postgres:17.11-alpine
     environment:
       POSTGRES_USER: acp
-      POSTGRES_PASSWORD: acp # development-only credential; never used outside this file
+      # Development-only credential. The same value is committed in
+      # deploy/k8s/10-config.yaml, deliberately, so both stacks run from a clean
+      # checkout; gitleaks allowlists this one literal and nothing else.
+      POSTGRES_PASSWORD: acp
       POSTGRES_DB: acp
     ports:
       - "127.0.0.1:5432:5432"

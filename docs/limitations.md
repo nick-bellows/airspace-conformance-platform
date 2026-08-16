@@ -1,7 +1,6 @@
 # Limitations
 
-Status: `draft` — kept current as milestones land. Every number this project
-publishes is qualified here.
+Every number this project publishes is qualified here.
 
 Read [`safety-notes.md`](safety-notes.md) first for what the system is and is
 not. This document is narrower: what the *measurements* do and do not support.
@@ -174,86 +173,115 @@ From `eval/results/trajectory_prediction.md` and the
 
 ## 5. Scale and operations
 
+These qualify the *system*, not the numbers above. What would be built to fix
+them, and what is deliberately declined, is in [`future-work.md`](future-work.md).
+
 - **Track identity is simplified.** One track per aircraft address, permanently.
   A real system issues a fresh track number when an aircraft reappears after a
-  long absence; here two separate flights by the same airframe would share a
-  track.
-- **No dead-letter queue.** A message that fails validation is logged and
-  skipped so one bad record cannot stall the airspace picture, but it is then
-  gone. A production deployment would route it somewhere.
-- **The tracker commits Kafka offsets before its batched database flush.** A
-  hard kill in between loses up to one flush interval — a second, or fifty
-  updates — of track *history*, with no redelivery to recover it. The live
-  picture is unaffected because it is rebuilt from the next report. The
-  shutdown path flushes deliberately; only an uncatchable signal loses data.
-  Fixing it properly means an outbox table, which is real work for a bounded
-  loss of historical rows.
-- **Two services share a database schema** ([ADR 0004](adr/0004-shared-read-model-between-tracker-and-api.md)),
-  which is a recognised coupling. Tolerable here because exactly one service
-  writes.
-- **Everything releases together.** The services are independently deployable
-  but not independently versioned, so this does not exercise staged rollout of a
-  contract change ([ADR 0003](adr/0003-shared-library-with-enforced-service-isolation.md)).
+  long absence; here two separate flights by the same airframe share a track.
+- **No dead-letter queue.** A message failing validation is logged, counted, and
+  skipped so one bad record cannot stall the airspace picture — but it is then
+  gone.
+- **The tracker commits Kafka offsets before its batched database flush.** A hard
+  kill in between loses up to one flush interval — a second, or fifty updates —
+  of track *history*, with no redelivery to recover it. The live picture is
+  unaffected because it is rebuilt from the next report.
+- **Two services share a database schema**
+  ([ADR 0004](adr/0004-shared-read-model-between-tracker-and-api.md)), which is a
+  recognised coupling. Tolerable here because exactly one service writes.
+- **Everything releases together.** The services are independently deployable but
+  not independently versioned, so this does not exercise staged rollout of a
+  contract change.
 - **Throughput is measured for the compute path only.** 500 aircraft, cycle p95
   251 ms against a 500 ms budget — see [`latency-budget.md`](latency-budget.md).
   Kafka, Postgres, and Redis are excluded, and **no deployed system has been
   measured**.
 - **The live stream is server-side polling with push**, not event-driven. Update
-  latency is bounded by the poll interval rather than by how quickly an alert is
-  produced ([ADR 0009](adr/0009-one-reader-fans-out-to-many-viewers.md)).
+  latency is bounded by the poll interval
+  ([ADR 0009](adr/0009-one-reader-fans-out-to-many-viewers.md)).
 - **The conformance service cannot be scaled out.** Every instance would hold the
-  whole airspace picture and duplicate every alert. The tracker shards by
-  partition; this does not, and sector-partitioning it is real work that is not
-  done.
-- **Consumer-group rebalance is tested for assignment, not for behaviour.** Two
-  consumers are shown to divide partitions; a consumer *joining mid-stream* with
-  messages in flight is the harder case and is untested.
+  whole airspace picture and duplicate every alert.
+- **Rebalance is handled, but filter state is not transferred.** A tracker replica
+  that loses a partition releases those aircraft without terminating them
+  ([ADR 0011](adr/0011-partition-ownership-is-state.md)); the new owner builds a
+  fresh filter from the next report, so those tracks re-initiate with a wide
+  covariance and take seconds to converge. A real accuracy dip during any
+  deployment that moves partitions, and a deliberate trade against an
+  inter-replica state-transfer protocol.
+- **At-least-once *across* a rebalance is untested.** A report in flight when its
+  partition is revoked is discarded rather than processed — the offset was never
+  committed, so the new owner replays it — but the generator still commits
+  afterwards, and a commit for a revoked partition raises `CommitFailedError`.
+  That path predates the rebalance work and is asserted nowhere.
+- **The rebalance fixes have only ever been exercised by unit tests**, which drive
+  the interleavings deterministically with a fake. No test has run two real
+  tracker replicas against a real broker and forced a real reassignment.
 - **The perf job is `continue-on-error` in CI.** A budget that fails the build on
-  a noisy shared runner teaches people to ignore the job, so it reports rather
-  than blocks — which does mean a genuine regression could land unblocked.
+  a noisy shared runner teaches people to ignore the job — which does mean a
+  genuine regression could land unblocked.
 
 ---
 
 ## 5a. Observability and deployment
 
-- **Traces are sampled at 100% and metrics carry unbounded-in-principle
-  labels.** Both are fine at four aircraft and wrong at real volume. Sampling is
-  one configuration change; a `partition` label on consumer lag is bounded by
-  the topic's six partitions, but nothing enforces that a future label stays
-  bounded, and an unbounded label is the standard way to fall over a Prometheus
-  server.
-- **Metrics are per process, and processes are not aggregated for correctness.**
-  `acp_live_tracks` from two tracker replicas is two partial pictures, not one
-  number; the dashboard uses `max()` where a sum would mislead, which works for
-  the current topology and would need revisiting under real sharding.
-- **Nothing alerts.** Prometheus is configured to scrape and Grafana to draw.
-  There are no alerting rules, no Alertmanager, and no on-call anything, so
-  "consumer lag is climbing" is visible only to someone looking at the page.
-- **Kubernetes runs infrastructure as Deployments with ephemeral storage.** A
-  Postgres pod restart loses track history. StatefulSets with volume claims
-  would imply a durability this stack does not have, so the weaker thing is
-  stated rather than the stronger thing implied.
-- **The Postgres password is committed**, in `deploy/k8s/10-config.yaml` and
-  `deploy/compose.yml`, so a clean checkout runs. It guards synthetic data on a
-  loopback-bound port, and it is the wrong pattern for anything real. gitleaks
-  is configured to allow that one literal and nothing else, so a *different*
-  credential committed to the same file still fails the build.
-- **There is no Ingress, NetworkPolicy, TLS, or authentication anywhere.** The
-  API is unauthenticated by design at this stage; the WebSocket origin check
-  exists because it becomes a Cross-Site WebSocket Hijacking vulnerability the
-  moment authentication is added, and the mitigation belongs in place before
-  then rather than after.
-- **The `kind` job proves the manifests start and pass traffic, not that they
-  are production-shaped.** No resource pressure, no node failure, no rolling
-  update under load, no HPA.
-- **`--strict` is not used with pip-audit**, because it would fail on the
-  deliberate skip of the editable project itself. Torch is not audited by
-  pip-audit at all — the CPU-only wheel carries a `+cpu` local version that does
-  not exist on PyPI — and is covered by the Trivy image scan instead. That is a
-  different tool with a different database, not an equivalent one.
-- **Trivy's deployment-config scan is informational.** It encodes opinions this
-  stack has deliberately declined, and failing on them would mean either arguing
-  with the tool in configuration or pretending the decisions were not made.
+- **No CI job has run *in GitHub Actions*.** There is no git remote, so nothing
+  has executed there and no image has been published. Three external reviews
+  found eighteen defects in that configuration, each round finding things the
+  last had missed. The `k8s` job's steps have since been run by hand against a
+  real `kind` cluster and passed end to end — cluster created, image side-loaded,
+  manifests applied, migration completed, all four deployments rolled out,
+  traffic reaching the API, worker metrics scrapeable — but that is a human
+  running the commands, not the pipeline running itself.
+- **The feed crash-loops on a cold Kubernetes start.** Observed during that run:
+  two restarts with `KafkaConnectionError: Unable to bootstrap from
+  redpanda:9092`, exit 1, then Kubernetes `BackOff`. Compose expresses the
+  dependency (`depends_on: redpanda, condition: service_healthy`); the manifests
+  express nothing, so the feed starts before the broker is accepting connections
+  and dies until it is. It is self-healing and costs tens of seconds on a cold
+  start, and it is the same class of gap as the migration ordering defect —
+  Kubernetes has no `depends_on`, so ordering has to be built.
+- **One termination event during that run is unexplained.** Two seconds after the
+  first rebalance, a tracker replica logged `terminated stale tracks` for two
+  aircraft that were still reporting. The most likely cause is the feed
+  crash-loop above leaving a gap longer than the 30 s termination timeout, which
+  would make the termination *correct* — but a controlled test (stop the tracker,
+  build a 90 s backlog, restart) did not reproduce it, so this is recorded as
+  observed and not diagnosed rather than explained away.
+- **Nothing alerts.** Prometheus scrapes and Grafana draws, but there are no
+  alerting rules and no Alertmanager, so "consumer lag is climbing" is visible
+  only to someone already looking at the page.
+- **Traces are sampled at 100%** and metrics are per process. Fine at four
+  aircraft, wrong at real volume. `acp_live_tracks` from two tracker replicas is
+  two partial pictures, which is why the panel sums them and why the workers are
+  discovered by DNS rather than as a single static target.
+- **The trace linking a report to its alert is a link, not a parent.** The scan
+  runs on a timer over the whole picture, so it has no single cause. A reader
+  expecting one continuous parent-child trace from feed to alert will not find
+  one.
+- **The per-report histogram measures the filter stage only** —
+  `acp_report_filter_seconds` covers the Kalman update, not Kafka publication or
+  the database write, matching the boundary `latency-budget.md` draws.
+- **Build provenance is an image ID, not an attestation.** CI builds once and
+  every consumer asserts the loaded image matches, so the published artefact is
+  demonstrably the tested one. There is no signature and no SLSA provenance, so
+  the chain holds within one workflow run and is unverifiable outside it.
+- **The `kind` job is configured to prove the manifests start and pass traffic,
+  not that they are production-shaped** — and has proved neither yet. No resource
+  pressure, no node failure, no rolling update under load, no HPA.
+- **Infrastructure runs as Deployments with ephemeral storage**, so a Postgres
+  restart loses track history. A StatefulSet would imply a durability this stack
+  does not have.
+- **The Postgres password is committed** so a clean checkout runs. It guards
+  synthetic data on a loopback-bound port and is the wrong pattern for anything
+  real. gitleaks allows that one literal and nothing else — verified by
+  substitution, including inside a DSN and at two characters, both of which
+  earlier versions of the rules missed.
+- **Every workload names a mutable image tag.** `acp:dev` exists so a clean
+  checkout runs with no registry; the cost is that redeploying needs
+  `rollout restart` rather than `kubectl apply` alone.
+- **There is no Ingress, NetworkPolicy, TLS, or authentication.** The WebSocket
+  origin check exists because it becomes a Cross-Site WebSocket Hijacking
+  vulnerability the moment authentication is added.
 
 ---
 
@@ -264,21 +292,19 @@ From `eval/results/trajectory_prediction.md` and the
 | Conflict detection recall, precision, lead time | `eval/results/conflict_detection.md` | Synthetic traffic; unrealistic encounter rate |
 | Trajectory model halves turning error | `eval/results/trajectory_prediction.md` | Turning stratum only; aircraft fly exactly |
 | Skill survives distribution shift | Same report, `test_shifted` split | One shifted family, not a sweep |
-| The model degrades to physics on failure | `tests/unit/test_ml.py` | Covers missing, corrupt, NaN, and raising models |
+| The model degrades to physics on failure | `tests/unit/test_ml.py`, `degradation` CI job | Covers missing, corrupt, NaN, and raising models |
 | Features cannot see simulator intent | `tests/unit/test_ml.py`, contract shape | Structural, not a runtime check |
-| Conformance monitoring detects a real divergence | `tests/unit/test_conformance_monitor.py`, live run | Threshold not swept |
 | The filter reduces position error | `tests/unit/test_kalman.py` | Against the simulator's noise model only |
-| Services do not import each other | `tests/unit/test_architecture.py` | Static import graph; says nothing about runtime coupling |
+| Services do not import each other | `tests/unit/test_architecture.py` | Static import graph |
 | Idempotent writes under redelivery | `tests/unit/test_runners.py`, `tests/integration/` | Real consumer restart against the real constraint |
 | Committed reports match their inputs | `tests/unit/test_generator.py` fingerprint | Covers NOMINAL only |
 | The API obeys its own OpenAPI spec | `tests/contract/test_openapi.py` (schemathesis) | Fake stores; HTTP layer only |
 | Schema changes stay backward compatible | `tests/contract/test_compatibility.py` | Diffs against HEAD, not a release tag |
-| Partition assignment, consumer resume, idempotency | `tests/integration/` on real containers | Same image versions as compose |
+| Partition assignment, consumer resume | `tests/integration/` on real containers | Same image versions as compose |
+| Releasing a partition publishes no termination | `tests/unit/test_rebalance.py` | Deterministic fake; never a real broker rebalance |
 | End-to-end pipeline works | `tests/e2e/` under docker compose | Single-node, one scenario |
 | Throughput at 500 aircraft | `tests/perf/`, `latency-budget.md` | Compute path only; no transport |
-| Observability degrades without its extra | `degradation` CI job, `tests/unit/test_metrics.py`, `test_tracing.py` | Proves the fallback runs, not that it is equivalent |
-| A trace crosses three services | `tests/unit/test_tracing.py` round trip; observed in Jaeger | Header round trip in test; the live check is manual |
-| The manifests start and pass traffic | `k8s` CI job on a `kind` cluster | Single node, no load, no failure injection |
+| Observability degrades without its extra | `degradation` CI job, `tests/unit/test_metrics.py` | Proves the fallback runs, not that it is equivalent |
 | Deployment artefacts agree with the code | `tests/unit/test_deployment.py` | Static agreement; says nothing about whether the values are right |
 
 No metric appears in the README until its runner is committed and reproducible

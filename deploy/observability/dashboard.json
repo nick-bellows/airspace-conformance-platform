@@ -88,8 +88,8 @@
     },
     {
       "type": "timeseries",
-      "title": "Report processing latency",
-      "description": "One surveillance report into one track update. The budget in docs/latency-budget.md is the red line; past 1 s the system is no longer keeping up with a 1 Hz report rate.",
+      "title": "Report filter latency",
+      "description": "One surveillance report through its Kalman filter. Excludes Kafka publication and database writes, which belong to the deployment. The red line is the 1 ms p95 in docs/latency-budget.md — at 500 aircraft this runs 500 times a second, so it is what decides whether the tracker scales. An earlier version of this panel drew the line at 1 s, a thousand times the budget it claimed to show.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 8, "w": 12, "x": 0, "y": 10 },
       "fieldConfig": {
@@ -101,7 +101,7 @@
             "mode": "absolute",
             "steps": [
               { "color": "green", "value": null },
-              { "color": "red", "value": 1 }
+              { "color": "red", "value": 0.001 }
             ]
           }
         },
@@ -111,17 +111,17 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "histogram_quantile(0.50, sum by (le) (rate(acp_report_processing_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(acp_report_filter_seconds_bucket[5m])))",
           "legendFormat": "p50"
         },
         {
           "refId": "B",
-          "expr": "histogram_quantile(0.95, sum by (le) (rate(acp_report_processing_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(acp_report_filter_seconds_bucket[5m])))",
           "legendFormat": "p95"
         },
         {
           "refId": "C",
-          "expr": "histogram_quantile(0.99, sum by (le) (rate(acp_report_processing_seconds_bucket[5m])))",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(acp_report_filter_seconds_bucket[5m])))",
           "legendFormat": "p99"
         }
       ]
@@ -201,7 +201,7 @@
     {
       "type": "stat",
       "title": "Live tracks",
-      "description": "Aircraft currently held. Zero while the feed is running is a visible failure that no error log reports.",
+      "description": "Aircraft currently held, summed across tracker replicas. Each replica owns only the partitions Kafka assigned it, so this is a sum of partial pictures, not a maximum of them — an earlier version used max() and read roughly half the true count at the two replicas the manifests ship. Zero while the feed is running is a visible failure that no error log reports.",
       "datasource": { "type": "prometheus", "uid": "${datasource}" },
       "gridPos": { "h": 6, "w": 6, "x": 0, "y": 26 },
       "fieldConfig": {
@@ -221,7 +221,7 @@
       "targets": [
         {
           "refId": "A",
-          "expr": "max(acp_live_tracks{service=\"track\"})",
+          "expr": "sum(acp_live_tracks{service=\"track\"})",
           "legendFormat": "tracks"
         }
       ]

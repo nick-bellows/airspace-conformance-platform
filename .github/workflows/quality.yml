@@ -1,5 +1,16 @@
-# Quality gate. The first five jobs mirror `scripts/run_checks.ps1` exactly --
-# if the local script passes, they should too.
+# Quality gate.
+#
+# !! NOTHING IN THIS FILE HAS EVER RUN. !!
+# This repository has no remote yet, so every job below is unexecuted code. Two
+# external reviews found defects that a first run would have caught -- a
+# nonexistent action ref, an image that fails its own scan, and a step that
+# executes nothing. They are itemised in the README roadmap and are being fixed
+# before the first push. Do not treat a green local gate as evidence about this
+# file.
+#
+# `lint`, `types`, `unit`, and `contracts` mirror `scripts/run_checks.ps1`; the
+# script has no `degradation` step because its venv has every extra installed,
+# which is exactly the condition that job exists to break.
 #
 # Jobs are split rather than chained into one so a failure names itself in the
 # checks list: "types" failing is a different signal from "contracts" failing.
@@ -31,8 +42,8 @@ jobs:
     name: lint (ruff)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -44,8 +55,8 @@ jobs:
     name: types (mypy strict)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -61,8 +72,8 @@ jobs:
     name: unit + contract tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -71,7 +82,7 @@ jobs:
       # cannot be imported at all.
       - run: pip install -e ".[all]" --extra-index-url https://download.pytorch.org/whl/cpu
       - run: pytest tests/unit tests/contract --cov=acp --cov-report=term-missing --cov-report=xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: always()
         with:
           name: coverage-xml
@@ -82,8 +93,8 @@ jobs:
     name: contract schema drift
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -98,8 +109,8 @@ jobs:
     name: runs without the ml extra
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -131,19 +142,66 @@ jobs:
           import importlib.util
           assert importlib.util.find_spec("prometheus_client") is None, "extra present; proves nothing"
           from acp.common.metrics import METRICS, METRICS_AVAILABLE, serve_metrics
-          from acp.common.tracing import TRACING_AVAILABLE, configure_tracing, inject_headers, span
+          from acp.common.tracing import (
+              TRACING_AVAILABLE,
+              configure_tracing,
+              consumer_span,
+              current_span_context,
+              current_trace_id,
+              inject_headers,
+              span,
+          )
           assert not METRICS_AVAILABLE and not TRACING_AVAILABLE
-          # Every call site in the codebase, exercised against the no-ops.
-          METRICS.reports_consumed.labels(service="track").inc()
-          METRICS.live_tracks.labels(service="track").set(3)
-          with METRICS.time(METRICS.pipeline_latency, "track"):
-              pass
+
+          # Every metric family the codebase declares, exercised with the label
+          # sets its real call sites use, plus every public function in
+          # acp.common.tracing.
+          #
+          # The list is cross-checked against Metrics._NAMES rather than trusted,
+          # so a metric added later fails this job instead of quietly escaping
+          # it. That is not hypothetical: the first version of this step covered
+          # five of twelve families while the ADR claimed it covered all of them,
+          # and two external reviews caught the gap before CI ever ran.
+          from acp.common.metrics import Metrics
+          labels = {
+              "reports_consumed": {"service": "track"},
+              "messages_published": {"service": "feed", "topic": "t"},
+              "track_updates_published": {"service": "track"},
+              "alerts_published": {"service": "conformance", "kind": "k", "state": "NEW"},
+              "messages_discarded": {"service": "track", "topic": "t"},
+              "live_tracks": {"service": "track"},
+              "active_alerts": {"service": "conformance"},
+              "consumer_lag": {"service": "track", "topic": "t", "partition": "0"},
+              "pipeline_latency": {"service": "track"},
+              "scan_duration": {"service": "conformance"},
+              "model_loaded": {"service": "conformance"},
+              "predictions": {"service": "conformance", "source": "physics"},
+          }
+          assert set(labels) == set(Metrics._NAMES), (
+              f"metrics added without covering them here: {set(Metrics._NAMES) - set(labels)}"
+          )
+          for name, kwargs in labels.items():
+              handle = getattr(METRICS, name).labels(**kwargs)
+              handle.inc()
+              handle.set(1)
+              handle.observe(0.1)
+          for histogram in (METRICS.pipeline_latency, METRICS.scan_duration):
+              with METRICS.time(histogram, "track"):
+                  pass
           assert b"unavailable" in METRICS.render()
           assert serve_metrics(9464) is False
+
+          # And every public function in acp.common.tracing.
           assert configure_tracing("acp-track", "http://collector:4318/v1/traces") is False
           assert inject_headers([("x", b"y")]) == [("x", b"y")]
           with span("estimate", icao24="a1b2c3"):
               pass
+          with consumer_span("consume t", [("traceparent", b"whatever")], **{"m.partition": 0}):
+              pass
+          with span("conflict-scan", links=[current_span_context()], tracks=2):
+              pass
+          assert current_span_context() is None
+          assert len(current_trace_id()) == 32
           print("runs blind, as documented")
           PY
 
@@ -151,8 +209,8 @@ jobs:
     name: integration (real Kafka, Postgres, Redis)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -173,17 +231,31 @@ jobs:
   e2e:
     name: end to end (docker compose)
     runs-on: ubuntu-latest
+    needs: [image]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -e ".[all]" --extra-index-url https://download.pytorch.org/whl/cpu
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with: { name: acp-image }
+      - name: load the one image and prove it is the one that was built
+        run: |
+          docker load --input image.tar.gz
+          loaded=$(docker image inspect acp:dev --format '{{.Id}}')
+          test "$loaded" = "${{ needs.image.outputs.image-id }}" \
+            || { echo "loaded $loaded, expected ${{ needs.image.outputs.image-id }}"; exit 1; }
       # Brings the whole stack up and drives a scripted conflict through it.
       # The only test that would catch a broken compose file, a wrong
       # environment variable, or a service that cannot reach another.
+      #
+      # ACP_E2E_PREBUILT stops the fixture rebuilding, so this exercises the
+      # same artefact everything else does rather than a fifth build.
       - run: pytest tests/e2e -v
+        env:
+          ACP_E2E_PREBUILT: "1"
       - name: service logs on failure
         if: failure()
         run: docker compose -f deploy/compose.yml logs --tail 200
@@ -196,24 +268,64 @@ jobs:
     # and docs/latency-budget.md records what the budget means.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
       - run: pip install -e ".[all]" --extra-index-url https://download.pytorch.org/whl/cpu
       - run: pytest tests/perf -v -s
 
-  compose:
-    name: compose config + image build
+  # ---------------------------------------------------------------------------
+  # Build the image ONCE, and make every downstream job consume that exact
+  # artefact.
+  #
+  # It used to be built four separate times -- in `security`, `compose`, `k8s`,
+  # and `publish` -- on four different runners. Every `needs:` could be green
+  # and the pushed image would still be a build nobody scanned, because the
+  # Dockerfile uses a mutable base tag (`python:3.13-slim`) and unpinned
+  # dependency ranges, so two builds of one commit are not guaranteed to contain
+  # the same packages. An external review traced it; the fix is to stop building
+  # more than once.
+  #
+  # The image ID travels as a job output and every consumer asserts it matches
+  # after loading, so "same image" is checked rather than assumed.
+  # ---------------------------------------------------------------------------
+  image:
+    name: build the image (once)
     runs-on: ubuntu-latest
+    outputs:
+      image-id: ${{ steps.build.outputs.image-id }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - id: build
+        run: |
+          docker build --tag acp:dev .
+          echo "image-id=$(docker image inspect acp:dev --format '{{.Id}}')" >> "$GITHUB_OUTPUT"
+      - run: docker save acp:dev | gzip --fast > image.tar.gz
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: acp-image
+          path: image.tar.gz
+          retention-days: 1
+          compression-level: 0 # already gzipped
+
+  compose:
+    name: compose config + security context
+    runs-on: ubuntu-latest
+    needs: [image]
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
       # Syntax and reference check on the dev stack.
       - run: docker compose -f deploy/compose.yml config --quiet
-      # Cheap early signal: the e2e job builds the same image, but this fails in
-      # a minute rather than after the stack has been brought up.
-      - run: docker build --tag acp:ci .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with: { name: acp-image }
+      - name: load the one image and prove it is the one that was built
+        run: |
+          docker load --input image.tar.gz
+          loaded=$(docker image inspect acp:dev --format '{{.Id}}')
+          test "$loaded" = "${{ needs.image.outputs.image-id }}" \
+            || { echo "loaded $loaded, expected ${{ needs.image.outputs.image-id }}"; exit 1; }
 
       # The Kubernetes security context, checked in ten seconds instead of the
       # five minutes the `kind` job takes. Read-only root filesystem, non-root
@@ -222,10 +334,17 @@ jobs:
       # cache directory under $HOME, which is inside the read-only root; torch
       # is the obvious candidate, and loading the trajectory model is therefore
       # the specific thing exercised here.
+      #
+      # `-i` is load-bearing and was missing. Without it docker leaves the
+      # container's stdin closed, `python -` reads EOF, runs an empty program,
+      # and exits 0 -- so this step passed while asserting nothing at all. It was
+      # written from a local run that used `python -c` and did work, and never
+      # watched to fail. Verified after the fix by inverting an assertion and
+      # confirming the step goes red.
       - name: the image runs under the Kubernetes security context
         run: |
-          docker run --rm --read-only --user 1001:1001 --cap-drop ALL \
-            --security-opt no-new-privileges acp:ci python - <<'PY'
+          docker run --rm -i --read-only --user 1001:1001 --cap-drop ALL \
+            --security-opt no-new-privileges acp:dev python - <<'PY'
           from acp.common.metrics import METRICS_AVAILABLE, serve_metrics
           from acp.common.tracing import TRACING_AVAILABLE
           from acp.ml.predictor import TrajectoryPredictor
@@ -239,6 +358,20 @@ jobs:
           predictor = TrajectoryPredictor(60.0)
           assert predictor.has_model, "the committed model did not load in the image"
           assert serve_metrics(9464), "could not bind the metrics port"
+
+          # No package manager in the runtime image. Both of the image's Trivy
+          # findings were in pip's vendored msgpack and the base image's
+          # setuptools, neither of which anything here runs; the Dockerfile
+          # deletes them. This stops them coming back through a base image bump.
+          import importlib.util
+          import shutil
+
+          assert shutil.which("pip") is None, "pip is back on PATH; see the Dockerfile"
+          # And the bundled wheel that can recreate it. Deleting the installed
+          # pip alone left `python -m venv` able to rebuild a working pip inside
+          # /dev/shm under exactly these constraints -- demonstrated by a review
+          # after the walkthrough had already claimed otherwise.
+          assert importlib.util.find_spec("ensurepip") is None, "ensurepip can recreate pip"
           print("ok:", predictor.version)
           PY
 
@@ -254,15 +387,16 @@ jobs:
   security:
     name: security (SAST, deps, secrets, image)
     runs-on: ubuntu-latest
+    needs: [image]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           # Full history. A secret that was committed and then removed is still
           # in the objects and still compromised; scanning only the tip would
           # report clean on exactly the case that matters.
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -277,9 +411,15 @@ jobs:
           pip install bandit
           bandit --recursive src --severity-level medium --confidence-level medium
 
-      # Scoped to what the image installs, not to the dev toolchain: a CVE in a
-      # linter that never runs in production is noise, and a CVE in aiokafka is
-      # not.
+      # Scoped away from the dev toolchain: a CVE in a linter that never runs in
+      # production is noise, and a CVE in aiokafka is not.
+      #
+      # `scikit-learn` is installed explicitly rather than via the `ml` extra.
+      # It ships in the image and an earlier version of this step omitted it
+      # while the comment claimed to cover "what actually ships" -- the extra
+      # was skipped wholesale for torch's sake, taking scikit-learn with it.
+      # Torch really cannot be audited here, for the reason below; scikit-learn
+      # always could have been.
       #
       # `ml` is left out because the CPU-only torch wheel carries a local
       # version tag (2.x.y+cpu) that does not exist on PyPI, so pip-audit cannot
@@ -294,7 +434,7 @@ jobs:
         run: |
           pip install --upgrade pip setuptools
           pip install pip-audit
-          pip install -e ".[messaging,storage,api,observability]"
+          pip install -e ".[messaging,storage,api,observability]" scikit-learn
           pip-audit --skip-editable
 
       # Mounted read-only: a scanner has no reason to be able to write to the
@@ -305,17 +445,26 @@ jobs:
             zricethezav/gitleaks:v8.21.2 \
             detect --source /repo --config /repo/.gitleaks.toml --redact --verbose
 
-      - name: build the image to scan
-        run: docker build --tag acp:scan .
+      # The image is *loaded*, not built. Scanning a second build of the same
+      # commit would produce an SBOM and a CVE verdict for an artefact that was
+      # never published -- the exact gap a review found here.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with: { name: acp-image }
+      - name: load the one image and prove it is the one that was built
+        run: |
+          docker load --input image.tar.gz
+          loaded=$(docker image inspect acp:dev --format '{{.Id}}')
+          test "$loaded" = "${{ needs.image.outputs.image-id }}" \
+            || { echo "loaded $loaded, expected ${{ needs.image.outputs.image-id }}"; exit 1; }
 
       # Only fixed CRITICAL/HIGH findings fail the build. An unfixed CVE in a
       # base image is real, but failing every run over something with no
       # available patch trains people to ignore the job -- which is how a
       # fixable one gets ignored too.
       - name: Trivy (image vulnerabilities)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: acp:scan
+          image-ref: acp:dev
           severity: CRITICAL,HIGH
           ignore-unfixed: true
           exit-code: "1"
@@ -327,7 +476,7 @@ jobs:
       # mean either arguing with the tool in config or pretending the decisions
       # were not made.
       - name: Trivy (deployment misconfiguration)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: config
           scan-ref: deploy
@@ -336,9 +485,9 @@ jobs:
           format: table
 
       - name: SBOM
-        uses: anchore/sbom-action@v0
+        uses: anchore/sbom-action@8e94d75ddd33f69f691467e42275782e4bfefe84 # v0.20.9
         with:
-          image: acp:scan
+          image: acp:dev
           format: spdx-json
           artifact-name: acp-sbom.spdx.json
           output-file: acp-sbom.spdx.json
@@ -352,23 +501,41 @@ jobs:
   k8s:
     name: kubernetes (kind smoke test)
     runs-on: ubuntu-latest
+    needs: [image]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
-      - name: build the image
-        run: docker build --tag acp:dev .
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with: { name: acp-image }
+      - name: load the one image and prove it is the one that was built
+        run: |
+          docker load --input image.tar.gz
+          loaded=$(docker image inspect acp:dev --format '{{.Id}}')
+          test "$loaded" = "${{ needs.image.outputs.image-id }}" \
+            || { echo "loaded $loaded, expected ${{ needs.image.outputs.image-id }}"; exit 1; }
 
-      - uses: helm/kind-action@v1.10.0
+      # The Kubernetes version is pinned *transitively*, by pinning the action.
+      # An explicit `node_image` was worse than no pin at all: the previous
+      # combination named kindest/node:v1.31.2 against an action bundling kind
+      # v0.22, which predates v1.31 node images and emits a kubeadm config API
+      # version 1.31 rejects. Letting the action choose the node image it ships
+      # with makes that class of mismatch impossible, and the SHA pin above
+      # means the version still cannot move without a deliberate edit.
+      - uses: helm/kind-action@ef37e7f390d99f746eb8b610417061a60e82a6cc # v1.14.0
         with:
           cluster_name: acp
-          node_image: kindest/node:v1.31.2
 
       # The manifests use `imagePullPolicy: IfNotPresent` and a tag that exists
       # nowhere. Side-loading is what makes that work without a registry.
       - name: load the image into the cluster
         run: kind load docker-image acp:dev --name acp
 
-      - run: kubectl apply -f deploy/k8s/
+      # `kubectl apply` will not re-run a completed Job, so a redeploy has to
+      # delete it first. Harmless on a fresh cluster; load-bearing on any second
+      # apply, which is the case the previous manifests got silently wrong.
+      - run: |
+          kubectl -n acp delete job migrate --ignore-not-found
+          kubectl apply -f deploy/k8s/
 
       - name: wait for infrastructure
         run: |
@@ -420,22 +587,45 @@ jobs:
           kubectl -n acp logs -l app=api --tail=100 --prefix || true
 
   # ---------------------------------------------------------------------------
-  # CD. Publishes to GHCR on main only, and only behind every gate that could
-  # say the image is broken. This is the step that makes the pipeline continuous
-  # *delivery* rather than continuous inspection.
+  # CD. Publishes to GHCR on main only, behind every gate that could say the
+  # image is broken.
+  #
+  # `needs:` is exhaustive on purpose, and was not: `integration` and `compose`
+  # were missing. GitHub blocks a job only on failures among its *declared*
+  # dependencies -- an unrelated red job does not stop it -- so the at-least-once
+  # and idempotency guarantees, which live only in tests/integration and which
+  # e2e's single happy-path run cannot catch, were not gating a release.
+  #
+  # `perf` is deliberately excluded: it is `continue-on-error` by design, so
+  # depending on it would be theatre.
+  #
+  # It does NOT build. It loads the same artefact `security` scanned, `compose`
+  # ran under the Kubernetes security context, `e2e` drove traffic through, and
+  # `k8s` deployed to a cluster -- and asserts the image ID matches before
+  # pushing. Building here would have published a fresh resolution of a mutable
+  # base tag and unpinned dependency ranges: an image nobody had tested, with
+  # every gate green and an SBOM describing something else.
   # ---------------------------------------------------------------------------
   publish:
     name: publish image (GHCR)
     runs-on: ubuntu-latest
-    needs: [lint, types, unit, contracts, degradation, security, e2e, k8s]
+    needs:
+      [image, lint, types, unit, contracts, degradation, integration, compose, security, e2e, k8s]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-buildx-action@v3
-      - uses: docker/login-action@v3
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with: { name: acp-image }
+      - name: load the tested image and prove it is the one that was built
+        run: |
+          docker load --input image.tar.gz
+          loaded=$(docker image inspect acp:dev --format '{{.Id}}')
+          test "$loaded" = "${{ needs.image.outputs.image-id }}" \
+            || { echo "loaded $loaded, expected ${{ needs.image.outputs.image-id }}"; exit 1; }
+
+      - uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -444,19 +634,11 @@ jobs:
       # Tagged by commit SHA as well as `latest`, so a deployment can name an
       # exact build and a rollback has something to roll back to. `latest`
       # alone would make "which image is running" unanswerable.
-      - uses: docker/metadata-action@v5
-        id: meta
-        with:
-          images: ${{ env.IMAGE_NAME }}
-          tags: |
-            type=sha,format=long
-            type=raw,value=latest
-
-      - uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+      - name: tag and push the tested image
+        run: |
+          for tag in "sha-${GITHUB_SHA}" latest; do
+            docker tag acp:dev "${IMAGE_NAME}:${tag}"
+            docker push "${IMAGE_NAME}:${tag}"
+          done
+          docker image inspect "${IMAGE_NAME}:latest" \
+            --format 'published {{index .RepoDigests 0}}'

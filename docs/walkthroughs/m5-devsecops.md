@@ -227,33 +227,73 @@ which looks exactly like a healthy idle system.
 
 ## What this milestone proves, and what it does not
 
-**Proves.** The manifests start real pods and pass real traffic. The trace really
-does cross two broker hops. The metrics really are scrapeable from all four
-services — verified by running the stack, checking Prometheus reported four
-targets `up`, and running every one of the dashboard's twelve queries against it.
-The degradation claims are executed rather than asserted.
+> **The first draft of this section was wrong, and that is the most useful thing
+> in this document.** It claimed the Kubernetes manifests had been applied to a
+> cluster in CI and that images had been published. Neither had happened: the
+> repository had no git remote, so the pipeline had never run once. Three rounds
+> of external review followed, and the corrected version is below.
 
-**Does not prove.** Nothing alerts — Prometheus scrapes and Grafana draws, but
-there are no alerting rules and no Alertmanager, so "consumer lag is climbing" is
-visible only to someone looking at the page. The `kind` job runs one node with no
-resource pressure, no node failure, and no rolling update under load. Traces are
-sampled at 100%, which is fine at four aircraft and wrong at real volume.
-Infrastructure runs as Deployments with ephemeral storage, so a Postgres restart
-loses track history. There is no Ingress, no NetworkPolicy, no TLS, and no
-authentication anywhere.
+**Proves, by local execution.** The metrics are scrapeable from all four
+services — the stack was brought up, Prometheus reported four targets `up`, and
+every one of the dashboard's twelve queries was run against it. A trace crosses
+two broker hops: four spans, three services, observed in Jaeger. The image runs
+under the Kubernetes security context, verified with
+`docker run --read-only --user 1001 --cap-drop ALL`.
 
-All of it is in [`limitations.md`](../limitations.md) §5a.
+**Does not prove — because it has never run.** No GitHub Actions workflow has
+executed. `security`, `k8s`, and `publish` have never started, no manifest has
+been applied to a cluster by anything but a human, and no image exists in GHCR.
+
+**Does not prove — by design.** Nothing alerts. Traces are sampled at 100%.
+Infrastructure runs on ephemeral storage. There is no Ingress, NetworkPolicy,
+TLS, or authentication. All in [`limitations.md`](../limitations.md) §5a.
+
+## What three rounds of review found afterwards
+
+Eighteen defects, almost all in the CI configuration nobody had executed — and
+each round found defects in the previous round's fixes. The full list is in
+[`future-work.md`](../future-work.md) and the fixes are in the code; these four
+are the ones worth understanding.
+
+**A rebalance could delete a live aircraft.** The tracker kept every Kalman
+filter it had ever created, so when Kafka moved a partition the old replica kept
+ageing those aircraft and thirty seconds later published `TERMINATED` and deleted
+them from Redis — while the new owner was actively maintaining the same track.
+Invisible to 512 passing tests, because every one ran a single consumer.
+[ADR 0011](../adr/0011-partition-ownership-is-state.md) has the fix, and the two
+further defects found *inside* that fix: a rebalance arrives on its own task, so
+it races report handling; and a lock alone does not help, because the
+revocation's own flush is what writes the released aircraft back.
+
+**The published image was not the tested image.** It was built four times on
+four runners — scanned in `security`, exercised in `compose`, deployed in `k8s`,
+rebuilt in `publish`. With a mutable base tag and unpinned dependency ranges those
+are not guaranteed to be the same image, so every gate could be green while the
+pushed artefact was one nobody tested and the SBOM described something else. Now
+built once, uploaded as an artefact, and every consumer asserts the image ID
+matches.
+
+**A CI step executed nothing.** `docker run` without `-i` leaves stdin closed, so
+a heredoc never reaches `python -`, which runs an empty program and exits 0. It
+was written from a local command that did work and never watched to fail. The
+rule since: invert a new check once and confirm it goes red.
+
+**Redeploying Kubernetes deployed nothing.** Every workload names the mutable tag
+`acp:dev`, so a rebuild plus `kubectl apply` leaves the pod template identical,
+creates no ReplicaSet, and `rollout status` reports success for the *old* pods —
+while the migration Job reruns and applies a new schema underneath them.
 
 ## Numbers
 
 | | |
 | --- | --- |
-| Fast gate | 512 tests, 81% coverage, no exclusions |
+| Fast gate | 544 tests, 81% coverage, no exclusions |
 | Integration | 28 tests against real Redpanda, Postgres, Redis |
 | End to end | 8 tests under docker compose |
-| CI jobs | 12, of which one is CD |
+| CI jobs | 13 configured, of which one is CD — **0 executed** |
 | Prometheus targets in the dev stack | 4, all `up` |
-| Spans in one report's trace | 4, across 3 services |
+| Spans in one report's trace | 4 across 3 services, plus a `conflict-scan` span linked to every track it acted on |
+| Defects found building it / reviewing it | 3 / 18 |
 
 ## Questions a reviewer might ask
 

@@ -20,6 +20,7 @@ conformance service, where it becomes the manoeuvre signal.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -264,6 +265,37 @@ class TrackEstimator:
         for icao24 in stale:
             del self._tracks[icao24]
         return len(stale)
+
+    @property
+    def known_addresses(self) -> frozenset[str]:
+        """Every aircraft this estimator still holds, terminated or not.
+
+        Exposed so the runner can drop its partition-map entries for aircraft
+        that have been pruned, rather than keeping one per address ever seen.
+        """
+        return frozenset(self._tracks)
+
+    def release(self, addresses: Iterable[str]) -> int:
+        """Forget these aircraft without terminating them. Returns how many.
+
+        Distinct from `prune_terminated`, and the distinction is the whole
+        point: this is for aircraft that are still flying but are no longer
+        *ours*. When Kafka moves a partition to another consumer, the aircraft
+        on it keep reporting -- to somebody else. Ageing them here would end
+        with this instance declaring a live aircraft terminated and deleting it
+        from the shared picture while its new owner is still updating it.
+
+        So no `TrackUpdate` is produced and nothing is published. The state is
+        simply dropped; the new owner rebuilds a filter from the next report.
+        That costs a few seconds of convergence for the affected aircraft, which
+        is a far smaller error than a track vanishing from a controller's
+        display. See ADR 0011.
+        """
+        released = 0
+        for icao24 in list(addresses):
+            if self._tracks.pop(icao24, None) is not None:
+                released += 1
+        return released
 
     def innovation_for(self, icao24: str) -> float:
         """Latest innovation for a track, in nautical miles.

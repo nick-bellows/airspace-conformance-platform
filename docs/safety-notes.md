@@ -10,6 +10,17 @@ conformance monitoring as the problem domain. It ingests simulated surveillance
 reports, estimates aircraft state, and raises **advisory** alerts about
 predicted losses of separation and unmodelled maneuvers.
 
+**The domain was chosen because it makes the engineering legible, not because
+the intent is to build an ATC system.** Air traffic gives a reader an immediate
+grasp of why ordering matters per aircraft, why a stale track is worse than no
+track, why latency has a budget, and why a false alert is expensive — questions
+that are abstract in most demonstration projects and concrete in this one.
+
+It is scoped as a portfolio project throughout, and that scoping is a decision
+recorded in the README rather than a set of things that were not got round to.
+Where a production system would need more, the README says so and says it is not
+planned.
+
 ## What this system is not
 
 **This is not an air traffic control system and must never be used as one.**

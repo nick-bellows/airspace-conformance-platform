@@ -7,15 +7,37 @@ Kafka turn noisy aircraft position reports into smoothed tracks and advisory
 safety alerts: predicted losses of separation, unmodelled maneuvers, and
 emergency transponder codes.
 
-> **Status: M5 — DevSecOps and operations.** All four services run. `docker
-> compose up` from a clean clone produces manoeuvring traffic on a live display
-> streamed over a WebSocket, conflict alerts, and conformance advisories. Tested
-> at every level it claims to work at: contract, integration against real
-> infrastructure, end to end, and a latency budget. Now also instrumented
-> (Prometheus metrics, a provisioned Grafana dashboard, and traces that follow
-> one report across three services), scanned (SAST, dependency CVEs, secrets,
-> image, SBOM), and deployed to a real Kubernetes cluster in CI. Milestones below
-> are checked only when their evidence is committed.
+![Two aircraft converging head-on at FL350. A predicted-conflict advisory fires
+five minutes before closest approach, naming both aircraft and the predicted
+separation.](docs/assets/demo.gif)
+
+*Rendered by [`scripts/make_demo.py`](scripts/make_demo.py) from the committed
+`head-on-conflict` scenario — the same simulator, Kalman filter, and separation
+monitor the services run, not a mock-up. Regenerate it with
+`python scripts/make_demo.py`.*
+
+> **A portfolio project, not a product.** It exists to demonstrate how a
+> distributed, tested, observable system is built, using air traffic conformance
+> monitoring as the problem domain. What it deliberately does *not* do, and why,
+> is in [`docs/future-work.md`](docs/future-work.md) — worth reading before
+> concluding anything is missing by accident.
+>
+> **Status: M0–M5 built, M5 not yet proven.** `docker compose up` from a clean
+> clone produces manoeuvring traffic on a live display streamed over a
+> WebSocket, conflict alerts, and conformance advisories. Tested at every level
+> it claims to work at — unit, contract, integration against real
+> infrastructure, and end to end — plus a measured latency budget. M5 added
+> Prometheus metrics, distributed tracing across Kafka, a provisioned Grafana
+> dashboard, Kubernetes manifests, four-tool security scanning, and a GHCR
+> publish job.
+>
+> **The CI has never executed.** This repository had no remote when M5 was
+> written, so its pipeline is configured code that has never run. Three external
+> reviews found eighteen defects in it — including one that could delete a live
+> aircraft from the shared picture, and one that would have published an image
+> nobody had tested. All are fixed and verified locally; none is proved by a
+> real run. M5 stays unchecked until it is, because a milestone whose evidence
+> is "the workflow file says so" fails this repository's own standard.
 
 > **Not an air traffic control system.** Advisory output only, synthetic data
 > only, no certification of any kind. Read [`docs/safety-notes.md`](docs/safety-notes.md)
@@ -62,6 +84,7 @@ alternatives and why they lost:
 | [0008](docs/adr/0008-no-generative-model-in-the-safety-path.md) | No generative model in the runtime path, and why |
 | [0009](docs/adr/0009-one-reader-fans-out-to-many-viewers.md) | One reader fans out to many viewers, so load tracks the airspace not the audience |
 | [0010](docs/adr/0010-observability-degrades-rather-than-blocks.md) | Observability degrades to no-ops rather than blocking startup — and how a trace crosses a broker |
+| [0011](docs/adr/0011-partition-ownership-is-state.md) | Partition ownership is state: a consumer that loses a partition releases its aircraft without terminating them |
 
 ## Results
 
@@ -147,7 +170,7 @@ belongs to the deployment).
 | k8s | Whether a pod actually starts under the security context it declares | CI, `kind` |
 | perf | Whether it keeps up at realistic load | CI, informational |
 
-The fast gate has **no coverage exclusions** and reports 81% over 512 tests. The
+The fast gate has **no coverage exclusions** and reports 81% over 544 tests. The
 two pure I/O adapters are measured separately by the integration job against
 their own floor, which is what turned an earlier promise ("these will be covered
 later") into something enforced.
@@ -169,7 +192,7 @@ deploy/k8s/          Kubernetes manifests, applied to a kind cluster in CI
 deploy/observability/ Prometheus scrape config, Grafana provisioning, dashboard JSON
 tests/               unit · contract · integration · e2e · perf
 eval/                evaluation runners and committed, seed-stamped results
-docs/                ADRs, cards, walkthroughs, operations, limitations
+docs/                ADRs, cards, operations, limitations, future work
 ```
 
 ## Documentation
@@ -181,8 +204,22 @@ docs/                ADRs, cards, walkthroughs, operations, limitations
 | [`docs/limitations.md`](docs/limitations.md) | What every published number does and does not support |
 | [`docs/adr/`](docs/adr/) | Why each significant choice was made, and what lost |
 | [`docs/cards/`](docs/cards/) | Model and data cards |
-| [`docs/walkthroughs/`](docs/walkthroughs/) | Per-milestone explanation in plain English |
+| [`docs/how-it-was-built.md`](docs/how-it-was-built.md) | The build in one page: the decisions, and the defects each level of testing found |
+| [`docs/walkthroughs/`](docs/walkthroughs/) | Per-milestone detail, including what each one got wrong |
+| [`docs/agile.md`](docs/agile.md) | Objectives, acceptance criteria, definition of done, ROAM risk log |
+| [`docs/interview-brief.md`](docs/interview-brief.md) | Talking points. Not part of the system |
+| [`docs/future-work.md`](docs/future-work.md) | What would come next, what scale would force, and what is declined |
 | [`docs/ai-assisted-development.md`](docs/ai-assisted-development.md) | How AI was used to build this, and what it got wrong |
+| [`docs/latency-budget.md`](docs/latency-budget.md) | What "keeps up" means here, and what the measurement excludes |
+
+**Where to start, by how long you have.** Five minutes: this page, then
+[`safety-notes.md`](docs/safety-notes.md). An hour: add
+[`limitations.md`](docs/limitations.md) and two ADRs —
+[0006](docs/adr/0006-constant-velocity-filter.md), where a filter is chosen *for*
+its weakness, and [0011](docs/adr/0011-partition-ownership-is-state.md), which is
+the most interesting defect in the repository. Longer:
+[`how-it-was-built.md`](docs/how-it-was-built.md) and
+[`future-work.md`](docs/future-work.md).
 
 ## Quick start
 
@@ -300,89 +337,23 @@ Three of the current tests are worth singling out:
 - [x] **M2 — Detection.** Manoeuvring flight model, Kalman filter, separation monitor, alert lifecycle, scenario generator, and the conflict-detection evaluation report; ADRs 0005–0006.
 - [x] **M3 — Trajectory prediction.** Physics baselines, ridge and PyTorch residual models, stratified distribution-shift evaluation, conformance monitoring, model and data cards, operations manual; ADRs 0007–0008.
 - [x] **M4 — Real-time surface and full test pyramid.** WebSocket streaming, contract/compatibility/conformance tests, integration on real containers, end-to-end under compose, and a measured latency budget; ADR 0009.
-- [x] **M5 — DevSecOps and operations.** Prometheus metrics on all four services, W3C trace context across Kafka into Jaeger, a provisioned Grafana dashboard, Kubernetes manifests applied to a `kind` cluster in CI, four-tool security scanning with an SBOM, and image publishing to GHCR; ADR 0010.
-- [ ] **M6 — Narrative.** Agile artefacts (PI plan, stories with acceptance criteria, ROAM risk log), interview brief, demo recording.
+- [ ] **M5 — DevSecOps and operations.** Prometheus metrics on all four services, W3C trace context across Kafka into Jaeger, a provisioned Grafana dashboard, Kubernetes manifests, four-tool security scanning with an SBOM, and image publishing to GHCR; ADRs 0010–0011. **Built, unproven** — the pipeline has never run.
+- [x] **M6 — Make it legible.** A demo generated from the real simulator, one page of planning and delivery material, an interview brief, and a 25% cut to the documentation.
 
 No metric appears in this README until its evaluation runner is committed and
-reproducible from a recorded seed.
+reproducible from a recorded seed, and since M5 the same standard applies to
+claims about CI.
 
-## Roadmap
+## What comes next, and what deliberately does not
 
-Everything below is unbuilt. It is listed because the gaps are known, not
-because they are scheduled — and because a roadmap that quietly omits the known
-weaknesses is worse than no roadmap.
+M6 is done, and the project is finished as a portfolio piece. One thing is
+outstanding and it is not a milestone: **the pipeline has never run**, so M5
+stays unchecked until there is a green Actions run to link.
 
-### Making it viewable without Docker
-
-The single biggest barrier to anyone looking at this: today it requires cloning
-the repository, having Docker, and waiting several minutes for a first build.
-Most people who might want to look at it will not do that.
-
-- [ ] **A recorded demo in the README.** An animated capture of the head-on
-      conflict developing and the advisory firing, so the system is legible in
-      five seconds from the repository page alone. Cheapest possible fix and the
-      first one to do.
-- [ ] **A static replay page on GitHub Pages.** A pre-recorded scenario shipped
-      as a JSON frame log and replayed by the existing display code with no
-      backend at all. The display already renders from frames, so this is
-      largely a matter of serialising a run and pointing the page at the file.
-      Honest about what it is: a replay, not a live system, and labelled as such
-      on the page rather than in a footnote.
-- [ ] **A hosted live instance.** Genuinely useful and genuinely the most
-      expensive: a public deployment needs authentication, rate limiting, TLS,
-      and a cost ceiling, none of which exist. Listed so the omission is a
-      decision rather than an oversight.
-
-### Advanced visualisation
-
-The current display is a deliberately plain dark-canvas plan view — vanilla JS,
-no build step, no CDN, no map tiles. That was the right call for a demo that has
-to run offline from a clean clone, and it leaves several things unshown that the
-system already computes:
-
-- [ ] **Uncertainty on the display.** The Kalman filter maintains a full
-      covariance and nothing draws it. A 1-sigma ellipse around each track would
-      make the difference between a confident track and a coasting one visible,
-      and would make the case for probabilistic conflict detection obvious
-      rather than theoretical.
-- [ ] **Predicted trajectory ribbons.** Draw the +30/+60/+120 s forecasts, with
-      the model's and dead reckoning's side by side. This is the clearest
-      possible answer to "what does the ML actually do", and it needs no new
-      computation — the conformance service already produces both.
-- [ ] **Conflict geometry, not just a red ring.** Show the closest-point-of-
-      approach construction: where each aircraft will be, the predicted
-      separation, and the countdown. The alert already carries every one of
-      those numbers.
-- [ ] **A vertical profile view.** Conflicts are three-dimensional and a plan
-      view hides the dimension that resolves most of them. The `quiet-cruise`
-      scenario's laterally-close-but-4,000-ft-apart pair is invisible as a
-      *decision* today; a side view would show why it is correctly ignored.
-- [ ] **Time scrubbing over history.** Track history is already in Postgres and
-      already exposed by `/v1/tracks/{id}/history`. Replaying the last ten
-      minutes would turn the display from a monitor into an investigation tool.
-- [ ] **An embedded Grafana panel.** The dashboard exists and is provisioned;
-      surfacing pipeline health next to the airspace picture would connect the
-      two halves of the system for a viewer who only opens one page.
-
-### Known technical gaps
-
-- [ ] **Probabilistic conflict detection.** Precision is 0.57 because the
-      detector thresholds a point estimate. Using the covariance the filter
-      already maintains would replace "will they be within 5 NM" with "what is
-      the probability", which is the principled fix and the highest-value
-      unbuilt item in the repository.
-- [ ] **A dead-letter topic.** A message that fails validation is logged,
-      counted, and skipped. A real deployment would route it somewhere it can be
-      inspected rather than discarding it.
-- [ ] **Sharding the conformance service.** It holds the whole airspace picture,
-      so it cannot run more than one replica without publishing duplicate
-      alerts. Sector-based partitioning is the answer and is not written.
-- [ ] **Radar-style data association.** Reports carry aircraft identifiers.
-      Real surveillance does not, and building tracks without them is a
-      substantial problem this project sidesteps entirely.
-- [ ] **Secrets from a secret store.** The development Postgres password is
-      committed so a clean checkout works. That is wrong for anything real and
-      is flagged in the manifests themselves.
+Everything beyond it — the one technical improvement worth making, the
+engineering that scale would force, and the things declined on purpose — is in
+[`docs/future-work.md`](docs/future-work.md). Reading it is the fastest way to
+see where the boundaries are and why they are where they are.
 
 ## Licence
 

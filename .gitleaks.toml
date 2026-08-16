@@ -25,6 +25,51 @@ useDefault = true
   regex = '''(?i)ACP_[A-Z0-9_]*(SECRET|TOKEN|PASSWORD|API_?KEY)\s*[:=]\s*['"]?[A-Za-z0-9+/._-]{12,}'''
   tags = ["acp", "generic"]
 
+[[rules]]
+  # Any password assignment at all, regardless of entropy.
+  #
+  # This exists because the claim "a different password committed to the same
+  # file still fails the build" turned out to be **only sometimes true**. Tested
+  # by substituting three values for the committed development credential:
+  #
+  #   S3cr3t-Pr0d-DB-9f2a4c8e1b   caught (entropy)
+  #   hunter2trustno1             NOT caught
+  #   AKIAIOSFODNN7EXAMPLE        NOT caught
+  #
+  # A weak password is still a leaked password, and the default ruleset is built
+  # around entropy and vendor patterns rather than around "this repository has
+  # exactly one credential and it is this one". With the allowlist below
+  # suppressing that one line, this rule makes the claim true for any
+  # replacement rather than only for high-entropy ones.
+  id = "acp-password-assignment"
+  description = "A password assigned to anything other than the known dev credential"
+  # No `\b` before `password`: there is no word boundary between the `_` and the
+  # `P` of `POSTGRES_PASSWORD`, so anchoring on one silently matched nothing.
+  # Caught by substituting a weak password and watching the rule stay quiet.
+  #
+  # `{0,}` rather than `{2,}` on the tail: an earlier version required three
+  # characters, so `POSTGRES_PASSWORD: ab` passed. Short is not safe.
+  regex = '''(?i)password['"]?\s*[:=]\s*['"]?([^\s'"#,}][^\s'"#,}]{0,})'''
+  secretGroup = 1
+  keywords = ["password"]
+  tags = ["acp", "generic"]
+
+[[rules]]
+  # Credentials inside a connection string.
+  #
+  # The password rule above only fires on a key containing "password", so
+  # `ACP_POSTGRES_DSN: postgresql+asyncpg://acp:hunter2trustno1@host/db` sailed
+  # straight through it -- and three committed files carry credentials in
+  # exactly that shape. Found by an external review substituting a password into
+  # the DSN rather than into POSTGRES_PASSWORD, which is the more likely place
+  # for a real one to be pasted while debugging.
+  id = "acp-dsn-credential"
+  description = "A username:password pair embedded in a connection URI"
+  regex = '''[a-zA-Z][a-zA-Z0-9+.-]*://[^\s:/@'"]+:([^\s@'"]+)@'''
+  secretGroup = 1
+  keywords = ["://"]
+  tags = ["acp", "generic"]
+
 [allowlist]
   description = "The one development credential, allowed by value and not by location"
   # Deliberately no `paths` entry. Allowlisting whole directories -- `tests/`,
@@ -33,8 +78,22 @@ useDefault = true
   # debugging. These regexes match the single committed development password
   # and nothing else, so a *different* secret added to any of the same files
   # still fails the scan.
+  #
+  # `regexTarget` is load-bearing and was missing. Without it gitleaks matches
+  # allowlist regexes against the extracted *secret* rather than the source
+  # line, and every regex below is line-shaped -- so none of them could ever
+  # have fired. The scan passed only because no default rule catches a
+  # three-character password, which meant this allowlist was untested
+  # decoration and the green result was unearned by it. An external review
+  # found that; `tests/unit/test_deployment.py` now asserts the field is set.
+  regexTarget = "line"
   regexes = [
     '''postgresql\+asyncpg://acp:acp@''',
     '''POSTGRES_PASSWORD:\s*acp\b''',
     '''POSTGRES_PASSWORD:\s*["']?acp["']?\s*#''',
+    # A GitHub Actions expression is a *reference* to a secret, not a secret:
+    # the value is injected by the runner and never exists in the repository.
+    # `password: ${{ secrets.GITHUB_TOKEN }}` in the GHCR login step is the
+    # correct way to do this and must not be flagged as the wrong way.
+    '''\$\{\{\s*secrets\.[A-Za-z0-9_]+\s*\}\}''',
   ]

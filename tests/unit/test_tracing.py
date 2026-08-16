@@ -114,6 +114,47 @@ def test_consumer_span_ignores_an_unparseable_traceparent(recording_tracer: Any)
         assert current_trace_id()
 
 
+def test_a_span_can_link_to_causes_that_are_not_its_parent(recording_tracer: Any) -> None:
+    """Links are how a timer-driven scan says what caused it.
+
+    The conformance scan runs on a timer over the whole airspace picture, so it
+    has no single parent: it is caused by every track update it acts on. The
+    first version simply opened an unparented span, which left the report's
+    trace ending at the consume and the alert in a separate, unrelated trace --
+    exactly the interval the M5 notes claimed had been fixed.
+    """
+    from acp.common.tracing import current_span_context
+
+    causes = []
+    for icao24 in ("aaa111", "bbb222"):
+        with span("consume", icao24=icao24):
+            causes.append(current_span_context())
+
+    with span("conflict-scan", links=causes, tracks=2):
+        pass
+
+    scan = next(s for s in recording_tracer.get_finished_spans() if s.name == "conflict-scan")
+    assert len(scan.links) == 2
+    linked = {link.context.trace_id for link in scan.links}
+    assert linked == {c.trace_id for c in causes}
+    assert scan.parent is None, "a scan has no honest parent; links are the whole point"
+
+
+def test_links_are_ignored_when_they_are_absent(recording_tracer: Any) -> None:
+    """A picture with no traced updates must still produce a usable span."""
+    with span("conflict-scan", links=[None, None]):
+        pass
+
+    scan = next(s for s in recording_tracer.get_finished_spans() if s.name == "conflict-scan")
+    assert not scan.links
+
+
+def test_current_span_context_is_none_outside_a_span() -> None:
+    from acp.common.tracing import current_span_context
+
+    assert current_span_context() is None
+
+
 def test_current_trace_id_falls_back_to_the_context_variable() -> None:
     """With no active span, the M1 correlation id is still what the logs carry."""
     trace_id_var.set("trace-from-kafka-header")

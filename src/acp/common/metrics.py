@@ -6,10 +6,12 @@ Four questions an operator actually asks at three in the morning, and the metric
 that answers each:
 
 * *Is data flowing?* -- counters on reports, track updates, and alerts.
-* *Is it keeping up?* -- a histogram of how long a report takes end to end, and
-  consumer lag. Lag is the single most useful number in a Kafka system: it says
-  whether the backlog is growing, which is the difference between "slow" and
-  "failing".
+* *Is it keeping up?* -- a histogram of how long a report takes through the
+  Kalman filter, and consumer lag. The histogram covers the filter stage only,
+  not publication or storage: those belong to the deployment, which is the same
+  boundary `docs/latency-budget.md` draws. Lag is the single most useful number
+  in a Kafka system: it says whether the backlog is growing, which is the
+  difference between "slow" and "failing".
 * *Is the picture believable?* -- gauges for live tracks and active alerts. A
   track count that drops to zero while the feed is running is a visible failure
   that no error log would report.
@@ -29,7 +31,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import Any, Protocol
 
 from acp.common.logging import get_logger
@@ -42,6 +44,8 @@ class _Metric(Protocol):
 
     def labels(self, *args: str, **kwargs: str) -> Any: ...
 
+    def remove(self, *args: str) -> Any: ...
+
 
 class _NoOpMetric:
     """Stands in for a metric when prometheus_client is not installed.
@@ -53,6 +57,9 @@ class _NoOpMetric:
 
     def labels(self, *args: str, **kwargs: str) -> _NoOpMetric:
         return self
+
+    def remove(self, *args: str) -> None:
+        return None
 
     def inc(self, amount: float = 1.0) -> None:
         return None
@@ -76,13 +83,32 @@ except ImportError:  # pragma: no cover - exercised by the no-extra CI job
     METRICS_AVAILABLE = False
 
 
-#: Buckets for the end-to-end latency histogram, in seconds.
+#: Buckets for the per-report filter histogram, in seconds.
 #:
-#: Chosen around the budget in `docs/latency-budget.md` rather than from a
-#: default ladder: the interesting region is tens to hundreds of milliseconds,
-#: and the 1 s bucket is the one that matters -- past it the system is no longer
-#: keeping up with a 1 Hz report rate.
-LATENCY_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
+#: The budget in `docs/latency-budget.md` for this stage is **1 ms** p95, and the
+#: first version of this ladder started at 5 ms -- so the histogram could not
+#: resolve its own budget at all, and the dashboard drew a red line at 1 s,
+#: three orders of magnitude away from the number being enforced. Two external
+#: reviews caught it. The ladder now brackets 1 ms closely and still reaches far
+#: enough to show a pathological outlier.
+FILTER_BUCKETS = (
+    0.0001,
+    0.00025,
+    0.0005,
+    0.001,  # the documented p95 budget
+    0.0025,
+    0.005,
+    0.01,
+    0.05,
+    0.25,
+    1.0,
+)
+
+#: Buckets for the whole-picture conflict scan, in seconds.
+#:
+#: A different stage with a different budget -- 250 ms p95 -- so it gets its own
+#: ladder rather than sharing one scaled for a sub-millisecond operation.
+SCAN_BUCKETS = (0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0)
 
 
 class Metrics:
@@ -195,17 +221,23 @@ class Metrics:
             registry=self.registry,
         )
         self.pipeline_latency = Histogram(
-            "acp_report_processing_seconds",
-            "Time to process one surveillance report into a track update.",
+            "acp_report_filter_seconds",
+            # Named for what it times, after a review pointed out that the old
+            # name and help text ("into a track update") implied publish and
+            # storage were included. They are not: the timer wraps the Kalman
+            # update alone. Broker and database latency belong to the
+            # deployment, which is the same line docs/latency-budget.md draws.
+            "Time to fold one surveillance report into its Kalman filter. "
+            "Excludes Kafka publication and database writes.",
             ["service"],
-            buckets=LATENCY_BUCKETS,
+            buckets=FILTER_BUCKETS,
             registry=self.registry,
         )
         self.scan_duration = Histogram(
             "acp_conflict_scan_seconds",
             "Time to scan the whole airspace picture for conflicts.",
             ["service"],
-            buckets=LATENCY_BUCKETS,
+            buckets=SCAN_BUCKETS,
             registry=self.registry,
         )
         self.model_loaded = Gauge(
@@ -234,6 +266,23 @@ class Metrics:
             yield
         finally:
             metric.labels(service=service).observe(time.perf_counter() - started)
+
+    def forget(self, metric: _Metric, *labelvalues: str) -> None:
+        """Stop exporting one label set, if it is currently exported.
+
+        Needed because a gauge is only ever *set*: once a series exists it is
+        exported for the life of the process, even after the thing it described
+        has gone. A tracker replica that loses a Kafka partition would otherwise
+        keep publishing that partition's last known lag forever, and a `sum`
+        across replicas would report a backlog nobody has.
+
+        `prometheus_client.remove()` raises `KeyError` for a label set that was
+        never created, which happens routinely -- a partition revoked before any
+        message arrived on it -- so it is swallowed rather than guarded against
+        at every call site.
+        """
+        with suppress(KeyError):
+            metric.remove(*labelvalues)
 
     def render(self) -> bytes:
         """The Prometheus exposition payload for a scrape."""

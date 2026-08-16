@@ -90,14 +90,35 @@ def _tracer() -> Any:
     return trace.get_tracer("acp") if TRACING_AVAILABLE else None
 
 
+def current_span_context() -> Any | None:
+    """The active span's context, for linking to later, or None.
+
+    Kept opaque on purpose: callers store it and hand it back to `span(links=)`
+    without ever needing the OpenTelemetry types, which is what lets every
+    call site stay import-safe when the extra is absent.
+    """
+    if not TRACING_AVAILABLE:
+        return None
+    context = trace.get_current_span().get_span_context()
+    return context if context.is_valid else None
+
+
 @contextmanager
-def span(name: str, **attributes: Any) -> Iterator[None]:
-    """Record a span, or do nothing at all if tracing is unavailable."""
+def span(name: str, *, links: Sequence[Any] | None = None, **attributes: Any) -> Iterator[None]:
+    """Record a span, or do nothing at all if tracing is unavailable.
+
+    `links` attaches *causes* that are not parents. The distinction matters for
+    anything driven by a timer over accumulated state: the conformance scan is
+    caused by every track update in the airspace picture, not by one of them, so
+    there is no honest parent to nest it under. Links say "these contributed"
+    without claiming a call stack that never existed.
+    """
     tracer = _tracer()
     if tracer is None:
         yield
         return
-    with tracer.start_as_current_span(name) as current:
+    span_links = [trace.Link(context) for context in (links or []) if context is not None]
+    with tracer.start_as_current_span(name, links=span_links or None) as current:
         for key, value in attributes.items():
             current.set_attribute(key, value)
         yield

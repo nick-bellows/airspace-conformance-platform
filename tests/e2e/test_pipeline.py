@@ -104,8 +104,18 @@ def stack() -> Iterator[None]:
         check=False,
         timeout=300,
     )
+    # `ACP_E2E_PREBUILT=1` means "the `acp:dev` image is already loaded; use it".
+    # CI sets it so this suite exercises the *same* image artefact that the
+    # security scan, the kind cluster, and the publish step use. Rebuilding here
+    # would produce a fourth independent build, which is exactly the gap a
+    # review found in the release path: unpinned dependency ranges and a mutable
+    # base tag mean two builds of one commit are not guaranteed to be the same
+    # image. Locally the variable is unset and compose builds as before.
+    command = ["docker", "compose", "-f", str(COMPOSE_FILE), "up", "-d"]
+    if not os.environ.get("ACP_E2E_PREBUILT"):
+        command.append("--build")
     build = subprocess.run(  # noqa: S603
-        ["docker", "compose", "-f", str(COMPOSE_FILE), "up", "-d", "--build"],  # noqa: S607
+        command,
         cwd=REPO_ROOT,
         env=environment,
         capture_output=True,

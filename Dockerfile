@@ -66,6 +66,58 @@ COPY --chown=acp:acp alembic.ini ./alembic.ini
 # logs that it did -- see docs/cards/model-trajectory-predictor.md.
 COPY --chown=acp:acp models ./models
 
+# No package manager in the runtime image.
+#
+# This is a security fix with a measured origin, not a hardening gesture. Trivy
+# with the CI's own flags exited 1 on this image with two *fixed* HIGH findings:
+#
+#   msgpack     1.1.2   GHSA-6v7p-g79w-8964   fixed in 1.2.1
+#   setuptools  70.3.0  CVE-2025-47273        fixed in 78.1.1
+#
+# Both live in the base image's system Python at /usr/local, not in the
+# application venv (whose setuptools is 84.0.0 and clean). The msgpack hit is
+# pip's *vendored* copy, so upgrading pip only moves the problem to whatever
+# that pip vendors.
+#
+# Nothing in this image runs pip or setuptools: the services are console
+# scripts, alembic and uvicorn import neither, and dependencies are resolved at
+# build time in the builder stage. Deleting them clears both findings at their
+# source rather than suppressing them in a .trivyignore, shrinks the image, and
+# takes the "attacker lands in the container and pip installs a toolkit" step
+# off the table.
+#
+# `pkg_resources` goes with setuptools. It is checked at build time below --
+# if anything the services import still needs it, this build fails here rather
+# than at three in the morning.
+# `ensurepip` goes too, and that part was learned the hard way. Deleting the
+# installed pip clears the Trivy findings but does NOT remove pip *capability*:
+# the base image ships a bundled wheel at
+# `/usr/local/lib/python3.13/ensurepip/_bundled/pip-*.whl`, and under the exact
+# read-only, UID 1001, cap-drop, no-new-privileges constraints this still worked:
+#
+#     python -m venv /dev/shm/toolkit
+#     PYTHONPATH=/dev/shm/toolkit/lib/.../site-packages python -m pip --version
+#     -> pip 26.2.1
+#
+# An external review demonstrated it against an earlier build of this image,
+# after the docs had already claimed "no package manager in the runtime
+# image". The claim is now true; it was not before.
+RUN rm -rf \
+        /usr/local/lib/python3.13/site-packages/pip \
+        /usr/local/lib/python3.13/site-packages/pip-*.dist-info \
+        /usr/local/lib/python3.13/site-packages/setuptools \
+        /usr/local/lib/python3.13/site-packages/setuptools-*.dist-info \
+        /usr/local/lib/python3.13/site-packages/pkg_resources \
+        /usr/local/lib/python3.13/ensurepip \
+        /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.13 \
+        /opt/venv/lib/python3.13/site-packages/pip \
+        /opt/venv/lib/python3.13/site-packages/pip-*.dist-info \
+        /opt/venv/bin/pip /opt/venv/bin/pip3 /opt/venv/bin/pip3.13 \
+    && python -c "import acp.services.api.app, acp.services.track.__main__, \
+acp.services.conformance.__main__, acp.services.feed.__main__, alembic.config, uvicorn" \
+    && ! command -v pip \
+    && ! python -c "import ensurepip" 2>/dev/null
+
 USER acp
 
 # Overridden per service in compose and in the Kubernetes manifests.

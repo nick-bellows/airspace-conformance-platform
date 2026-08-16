@@ -45,11 +45,24 @@ class FakePublisher:
 
 
 class FakeSubscriber[MessageT: BaseModel]:
-    """Replays a fixed list of messages, then stops."""
+    """Replays a fixed list of messages, then stops.
 
-    def __init__(self, messages: Sequence[MessageT], *, topic: str = "test.topic") -> None:
+    `partitions` assigns each message a partition, so a test can exercise the
+    rebalance path without a broker. Aircraft are keyed by address, so in a real
+    cluster every report for one aircraft lands on the same partition; a test
+    that wants to be faithful should keep that property.
+    """
+
+    def __init__(
+        self,
+        messages: Sequence[MessageT],
+        *,
+        topic: str = "test.topic",
+        partitions: Sequence[int] | None = None,
+    ) -> None:
         self._messages = list(messages)
         self._topic = topic
+        self._partitions = list(partitions) if partitions is not None else None
 
     async def stream(self) -> AsyncIterator[Envelope[MessageT]]:
         for offset, message in enumerate(self._messages):
@@ -57,7 +70,7 @@ class FakeSubscriber[MessageT: BaseModel]:
                 message=message,
                 key=getattr(message, "icao24", None),
                 topic=self._topic,
-                partition=0,
+                partition=self._partitions[offset] if self._partitions else 0,
                 offset=offset,
                 trace_id=f"trace-{offset}",
             )

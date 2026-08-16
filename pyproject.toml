@@ -71,8 +71,14 @@ integration = [
     # The e2e suite connects to the WebSocket endpoint directly.
     "websockets>=13,<16",
 ]
+# Rendering the README demo. Its own extra because nothing at runtime draws
+# anything, and a portfolio asset should not put an imaging library in the
+# service image.
+demo = [
+    "pillow>=10.0,<12",
+]
 all = [
-    "airspace-conformance-platform[messaging,storage,api,ml,observability,dev,integration]",
+    "airspace-conformance-platform[messaging,storage,api,ml,observability,dev,integration,demo]",
 ]
 
 [project.scripts]
@@ -80,6 +86,8 @@ acp-sim = "acp.sim.cli:main"
 acp-feed = "acp.services.feed.__main__:main"
 acp-track = "acp.services.track.__main__:main"
 acp-conformance = "acp.services.conformance.__main__:main"
+# Used by the Kubernetes init containers, which have no `depends_on` to lean on.
+acp-wait-for-schema = "acp.storage.wait_for_schema:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

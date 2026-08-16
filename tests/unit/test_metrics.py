@@ -22,8 +22,9 @@ import pytest
 
 from acp.common.metrics import (
     CONTENT_TYPE,
-    LATENCY_BUCKETS,
+    FILTER_BUCKETS,
     METRICS_AVAILABLE,
+    SCAN_BUCKETS,
     Metrics,
     _NoOpMetric,
     serve_metrics,
@@ -107,7 +108,7 @@ def test_time_records_into_the_histogram() -> None:
         pass
 
     body = metrics.render().decode()
-    assert 'acp_report_processing_seconds_count{service="track"} 1.0' in body
+    assert 'acp_report_filter_seconds_count{service="track"} 1.0' in body
 
 
 def test_time_records_even_when_the_block_raises() -> None:
@@ -119,10 +120,20 @@ def test_time_records_even_when_the_block_raises() -> None:
     assert 'acp_conflict_scan_seconds_count{service="x"} 1.0' in metrics.render().decode()
 
 
-def test_latency_buckets_straddle_the_documented_budget() -> None:
-    """The 1 s bucket is the one that says whether 1 Hz is still being kept up with."""
-    assert 1.0 in LATENCY_BUCKETS
-    assert tuple(sorted(LATENCY_BUCKETS)) == LATENCY_BUCKETS
+def test_bucket_ladders_are_sorted_and_bracket_their_budgets() -> None:
+    """Two stages, two budgets, two ladders.
+
+    They shared one ladder starting at 5 ms while the filter budget is 1 ms, so
+    the histogram could not resolve the number it was supposed to enforce.
+    `tests/unit/test_deployment.py` checks the values against
+    `docs/latency-budget.md`; this checks the shape.
+    """
+    for ladder in (FILTER_BUCKETS, SCAN_BUCKETS):
+        assert tuple(sorted(ladder)) == ladder
+        assert len(set(ladder)) == len(ladder)
+    assert min(FILTER_BUCKETS) < min(SCAN_BUCKETS), (
+        "the filter ladder must resolve finer than the scan ladder; that is why it exists"
+    )
 
 
 def test_disabled_render_says_so_rather_than_returning_empty() -> None:

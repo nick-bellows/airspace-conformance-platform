@@ -51,8 +51,21 @@ start because it could not find a metrics library would be a system whose
 availability depended on its monitoring — precisely backwards.
 
 The claim is executable, not aspirational. The `degradation` CI job installs
-without `ml` **and** without `observability`, then exercises every call site the
-codebase contains against the no-ops.
+without `ml` **and** without `observability`, then exercises all twelve metric
+families with the label sets their real call sites use, and all six public
+functions in `acp.common.tracing`, against the no-ops. The list of families is
+cross-checked against `Metrics._NAMES`, so adding a metric without covering it
+fails the job.
+
+**That sentence was false when this ADR was first written**, and it is worth
+recording why rather than quietly fixing it. The original job exercised five of
+twelve families and three of five tracing functions — one call of each *shape* —
+while this document claimed it covered every call site. Two external reviews
+found the overstatement independently. The hidden risk was small, because every
+no-op shares one implementation, but the claim was exactly the kind this project
+exists not to make: unverifiable prose about a job that had, at that point, never
+run in CI at all. The job was widened until the sentence became true, and
+verified by running it in a venv built without either extra.
 
 **A background thread is the price of scrapeable workers.** The alternative was
 to leave the workers unscrapeable and write the gap down in

@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from acp.common.contracts import (
     TOPIC_ALERTS,
@@ -28,7 +29,7 @@ from acp.common.contracts import (
 from acp.common.logging import get_logger
 from acp.common.messaging import MessagePublisher, MessageSubscriber
 from acp.common.metrics import METRICS
-from acp.common.tracing import span
+from acp.common.tracing import current_span_context, span
 from acp.services.conformance.alerts import AlertManager, Detection
 from acp.services.conformance.monitor import ConformanceMonitor, NonConformance
 from acp.services.conformance.rules import check as check_rules
@@ -91,6 +92,10 @@ class ConformanceRunner:
         self._stale_after_s = stale_after_s
 
         self._picture: dict[str, TrackUpdate] = {}
+        #: The trace that delivered each track's latest position, for linking a
+        #: scan back to the reports that caused it. Values are opaque
+        #: OpenTelemetry span contexts, or None when tracing is not installed.
+        self._trace_of: dict[str, Any] = {}
         #: Non-conformance findings seen since the last scan, latest per track.
         #: Held rather than published immediately so that every alert in the
         #: system goes through one lifecycle and one hysteresis policy.
@@ -150,6 +155,7 @@ class ConformanceRunner:
         self._updates += 1
         if update.state is TrackState.TERMINATED:
             self._picture.pop(update.track_id, None)
+            self._trace_of.pop(update.track_id, None)
             return
         existing = self._picture.get(update.track_id)
         # Out-of-order updates would move a track backwards in time and could
@@ -157,6 +163,10 @@ class ConformanceRunner:
         if existing is not None and update.updated_at < existing.updated_at:
             return
         self._picture[update.track_id] = update
+        # Remember which trace delivered this aircraft's latest position, so the
+        # scan that acts on it can link back to the report that caused it. See
+        # `scan_now` for why this is a link rather than a parent.
+        self._trace_of[update.track_id] = current_span_context()
         # Clamped, because this ratchets and never goes backwards. One upstream
         # clock a year fast would otherwise pin the scan clock a year ahead
         # permanently, marking every real track stale and emptying the picture
@@ -177,11 +187,36 @@ class ConformanceRunner:
                 self._pending_conformance[finding.key] = finding
 
     async def scan_now(self, now: datetime) -> list[str]:
-        """Run one scan and publish whatever changed. Returns the alert keys."""
+        """Run one scan and publish whatever changed. Returns the alert keys.
+
+        ## Why the span wraps the whole method, and why it has links
+
+        The first version opened a span around the geometry alone and closed it
+        before the alerts were built and published — so the interval anybody
+        actually wants, *report observed to alert raised*, ended one step short
+        of the alert. It was also an unparented root span, because the scanner
+        runs as a detached task with no ambient trace context. Jaeger showed the
+        report's trace stopping at the conformance consume, and a separate,
+        unrelated `conflict-scan` trace beside it. Two external reviews found
+        it.
+
+        Parenting is the wrong repair. A timer-driven scan is not caused by one
+        report; it is caused by every track in the picture, and nesting it under
+        whichever update happened to arrive last would be a fiction that looks
+        like a fact. **Span links** say what is true: these traces contributed
+        to this scan. A reviewer following an alert can jump straight to the
+        reports behind it, and the causality is many-to-one because it really
+        is many-to-one.
+        """
         self._scans += 1
         vanished = self._expire_stale(now)
+        links = [context for context in self._trace_of.values() if context is not None]
 
-        with METRICS.time(METRICS.scan_duration, "conformance"), span("conflict-scan"):
+        with span("conflict-scan", links=links, tracks=len(self._picture)):
+            return await self._scan_within_span(now, vanished)
+
+    async def _scan_within_span(self, now: datetime, vanished: list[str]) -> list[str]:
+        with METRICS.time(METRICS.scan_duration, "conformance"):
             conflicts = self._monitor.scan(list(self._picture.values()))
         detections = [self._as_detection(c) for c in conflicts]
         for track in self._picture.values():
@@ -259,6 +294,9 @@ class ConformanceRunner:
         stale = [tid for tid, t in self._picture.items() if t.updated_at < cutoff]
         for track_id in stale:
             del self._picture[track_id]
+            # Otherwise the span-link map grows for the life of the process and
+            # every scan links to traces for aircraft that left hours ago.
+            self._trace_of.pop(track_id, None)
         return stale
 
     @staticmethod

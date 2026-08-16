@@ -26,19 +26,41 @@ scrape_configs:
         labels:
           service: api
 
-  # The three workers. `honor_labels` is deliberately left off: the `service`
-  # label below is Prometheus's view of where the sample came from, and the
-  # metrics themselves also carry a `service` label set by the application. They
-  # agree today, and if they ever disagree the target label is the one to trust.
+  # The three workers, discovered by DNS rather than named as static targets.
+  #
+  # This is not a stylistic preference. A `static_configs` entry of
+  # `track:9464` is ONE target with one `instance` label, however many replicas
+  # answer that name: Docker's DNS round-robins the connection, so Prometheus
+  # scrapes whichever container it happens to reach and stores the result under
+  # a single series identity. `docker compose up --scale track=3` would then
+  # produce a dashboard showing one replica's partial picture while appearing to
+  # show all three.
+  #
+  # That matters because the live-track panel *sums* across replicas. An earlier
+  # verification of that sum was run against a single replica, where sum and max
+  # are trivially identical, so it proved nothing about the case it was fixing.
+  # An external review caught both the config and the hollow verification.
+  #
+  # `dns_sd_configs` with type A resolves every address behind the name into its
+  # own target, which is what makes the sum real.
   - job_name: acp-workers
     metrics_path: /metrics
-    static_configs:
-      - targets: ["feed:9464"]
-        labels: { service: feed }
-      - targets: ["track:9464"]
-        labels: { service: track }
-      - targets: ["conformance:9464"]
-        labels: { service: conformance }
+    dns_sd_configs:
+      - names: ["feed", "track", "conformance"]
+        type: A
+        port: 9464
+        refresh_interval: 10s
+    relabel_configs:
+      # The discovered name is the compose service; keep it as `service` so the
+      # dashboard can select on it. `__meta_dns_name` is the name that was
+      # queried, not the individual container, so replicas of one service share
+      # it -- which is exactly the grouping the panels want.
+      - source_labels: [__meta_dns_name]
+        target_label: service
+      # And keep the resolved address as the instance, so two replicas of one
+      # service are two series rather than one.
+      - source_labels: [__address__]
+        target_label: instance
 
   - job_name: prometheus
     static_configs:

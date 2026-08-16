@@ -14,7 +14,12 @@ if (-not (Test-Path $python)) {
     exit 1
 }
 
-$targets = @("src", "tests", "scripts", "eval", "conftest.py")
+# Must match the paths the `lint` job passes to ruff in
+# .github/workflows/quality.yml. `migrations` was missing here while CI linted
+# it, so a lint error in an Alembic revision was green locally and red in CI --
+# the exact drift this script's header promises cannot happen.
+# `tests/unit/test_deployment.py` now fails if the two lists disagree.
+$targets = @("src", "tests", "scripts", "migrations", "eval", "conftest.py")
 
 Write-Host "`n[1/5] ruff check" -ForegroundColor Cyan
 & $python -m ruff check @targets
