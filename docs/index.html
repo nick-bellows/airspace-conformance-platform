@@ -57,7 +57,7 @@
   td.num { font-family: var(--mono); white-space: nowrap; }
   .good { color: var(--green); } .warn { color: var(--amber); }
 
-  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 26px; }
+  .cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 18px; }
   .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
   .card h3 { margin-top: 0; }
   .card p { font-size: 14.5px; color: var(--dim); margin-bottom: 0; }
@@ -305,18 +305,18 @@ docker compose -f deploy/compose.yml up -d --build
       ctx.fillStyle = colour;
       ctx.beginPath(); ctx.arc(x, y, 8, 0, Math.PI * 2); ctx.fill();
       const dy = index % 2 === 0 ? -26 : 34;
-      ctx.fillText(a.callsign, Math.min(x + 22, W - 130), Math.max(26, Math.min(y + dy, H - 120)));
+      ctx.fillText(a.callsign, Math.min(x + 22, W - 130), Math.max(26, Math.min(y + dy, H - 130)));
     });
 
     if (frame.alert) {
       ctx.fillStyle = "#12060a";
-      ctx.fillRect(0, H - 92, W, 46);
+      ctx.fillRect(0, H - 112, W, 48);
       ctx.fillStyle = C.amber;
-      ctx.fillText("PREDICTED CONFLICT   " + frame.alert, MARGIN / 2, H - 60);
+      ctx.fillText("PREDICTED CONFLICT   " + frame.alert, MARGIN / 2, H - 80);
     }
 
     ctx.fillStyle = C.dim;
-    ctx.fillText("synthetic traffic  ·  advisory only  ·  20 NM grid", MARGIN / 2, H - 22);
+    ctx.fillText("synthetic traffic  ·  advisory only  ·  20 NM grid", MARGIN / 2, H - 26);
 
     const mm = String(Math.floor(frame.t / 60)).padStart(2, "0");
     const ss = String(Math.floor(frame.t % 60)).padStart(2, "0");
