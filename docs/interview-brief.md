@@ -2,6 +2,91 @@
 
 Notes for talking about this project. Not part of the system.
 
+The first section is for a non-technical listener; everything after it assumes an
+engineer who will interrupt.
+
+---
+
+## The thirty-second version, no jargon
+
+A first-round screen is usually not an engineer. The goal is not to impress them
+— it is to give them **one sentence they can repeat accurately** to the person
+who will actually read the code.
+
+> It's a system that watches aircraft positions and warns when two of them are
+> heading for a near miss, a few minutes before it would happen. It's built the
+> way a real one would be — four independent services passing messages, a
+> database, monitoring, automated testing, the whole deployment — but it runs on
+> a simulator I wrote rather than real air traffic, so nobody should mistake it
+> for a real system.
+>
+> The part I'd want the engineer to look at is the measurement: I scored it
+> against what the simulator knew actually happened, and published the number
+> that makes it look bad alongside the ones that make it look good.
+
+The repeatable sentence is the first one. If they take away only "predicts
+aircraft conflicts, built like production, honest about what it proves," that
+screen went well.
+
+### What a screen actually asks
+
+**"How long did this take?"**
+Two days of concentrated work, and I used AI heavily — that's written up in the
+repo rather than left for someone to guess. The speed isn't the interesting
+part. The interesting part is that the verification discipline held anyway: no
+number appears in the documentation without a committed script that reproduces
+it, and a rule that nothing ships without being watched to fail once. AI makes
+confident wrong prose faster than it makes wrong code, and that's what the
+process was built against.
+
+**"Is this from a job?"**
+No, it's my own. I built it after applying for this kind of role, because my
+existing projects showed Python and machine learning but nothing distributed —
+no message streaming, no orchestration, no security scanning. This closes that
+gap in one piece of work rather than five small ones.
+
+**"What did you build versus what came from libraries?"**
+The libraries are the infrastructure — the message broker, the web framework,
+the database toolkit. Mine is everything that makes decisions: the flight
+simulator, the position-smoothing filter, the geometry that predicts whether two
+aircraft will get too close, the alert logic that stops warnings flickering on
+and off, and the machine-learning model plus the evaluation that judges it.
+
+**"What technologies?"**
+Python, Kafka for messaging, PostgreSQL and Redis for storage, FastAPI for the
+web layer, PyTorch for the model, Docker and Kubernetes for deployment, GitHub
+Actions for the pipeline — thirteen automated jobs including four security
+scanners.
+
+**"How big is it?"**
+About 8,000 lines of application code and slightly more test code than that —
+553 tests at 81% coverage. Eleven written decision records explaining why each
+significant choice was made over its alternatives.
+
+**"What was the hardest part?"**
+A bug that no test could see. Adding a second copy of one service could make an
+aircraft vanish from the display, because the two copies both thought they owned
+it. Every one of my 500-odd tests ran a single copy, so all of them passed. I
+had to build the failing case before I could fix it — and then found two more
+bugs inside my own fix.
+
+**"Why air traffic control?"**
+Because the requirements are obvious to anyone. A late warning is useless, a
+false alarm is expensive, and stale data is worse than no data. In most demo
+projects you have to argue that performance and reliability matter; here nobody
+needs convincing.
+
+**"Can I see it?"**
+[The page](https://nick-bellows.github.io/airspace-conformance-platform/) — a
+replay of the system running, no setup needed. The code is public and the README
+leads with the results, including the weak one.
+
+### Don't say
+
+"Production-ready" — it isn't, deliberately. "Real-time air traffic control" —
+it's advisory and uncertified, and saying otherwise in this industry is a red
+flag rather than a boast.
+
 ---
 
 ## The sixty-second version

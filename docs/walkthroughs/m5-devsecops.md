@@ -240,9 +240,18 @@ two broker hops: four spans, three services, observed in Jaeger. The image runs
 under the Kubernetes security context, verified with
 `docker run --read-only --user 1001 --cap-drop ALL`.
 
-**Does not prove — because it has never run.** No GitHub Actions workflow has
-executed. `security`, `k8s`, and `publish` have never started, no manifest has
-been applied to a cluster by anything but a human, and no image exists in GHCR.
+**Proves, by pipeline — but only after M6.** Everything in the paragraph above
+was all this milestone could claim when it was written, because the repository
+had no remote. It has one now: all thirteen jobs are green, `k8s` applies the
+manifests to a real `kind` cluster and scales the tracker to two replicas, and
+`publish` pushes a digest-pinned image to GHCR. Getting there took four attempts
+and found five more defects — [the M6 walkthrough](m6-narrative.md#and-then-the-pipeline-ran)
+has the table.
+
+**Does not prove.** The GHCR package is published but not public, so `docker
+pull` works for the owner and nobody else; the quickstart therefore builds
+locally rather than pulling. No cluster outside CI has ever run these manifests,
+and `kind` on a two-core runner is not evidence about a real one.
 
 **Does not prove — by design.** Nothing alerts. Traces are sampled at 100%.
 Infrastructure runs on ephemeral storage. There is no Ingress, NetworkPolicy,
