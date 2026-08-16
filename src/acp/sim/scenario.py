@@ -12,6 +12,9 @@ and get exactly that, every time, so a detector can be scored against it.
 
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -192,3 +195,55 @@ def load_scenario(path: str | Path) -> Scenario:
     if not isinstance(raw, dict):
         raise ValueError(f"{path}: expected a YAML mapping at the top level")
     return Scenario.model_validate(raw)
+
+
+#: Decimal places every float is rounded to before a scenario set is hashed.
+#:
+#: 9 places on a coordinate is about 0.1 mm, which is nine orders of magnitude
+#: finer than anything that could change a 5 NM separation verdict -- and many
+#: orders of magnitude coarser than the platform noise this exists to absorb.
+FINGERPRINT_PLACES = 9
+
+
+def _canonical(value: object) -> object:
+    """Recursively round floats so a hash does not depend on the last ULP."""
+    if isinstance(value, float):
+        # `+ 0.0` normalises -0.0, which would otherwise serialise differently
+        # from 0.0 for a value that is arithmetically identical.
+        return round(value, FINGERPRINT_PLACES) + 0.0
+    if isinstance(value, dict):
+        return {k: _canonical(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_canonical(v) for v in value]
+    return value
+
+
+def fingerprint(scenarios: Sequence[Scenario]) -> str:
+    """Identify a scenario set, so a committed report names its own inputs.
+
+    ## Why this rounds before hashing
+
+    The first version hashed `model_dump_json()` directly, and the fingerprint
+    then differed between Windows and Linux. The generator itself is
+    deterministic -- it draws from `random.Random`, which is platform-stable --
+    but aircraft positions are computed through `math.sin`, `cos`, `asin`, and
+    `atan2`, and those are libm calls whose last unit in the last place differs
+    between the MSVC and glibc implementations. A difference around the
+    fifteenth significant digit changed the SHA and failed the guard, on the
+    first CI run this project ever had.
+
+    That difference cannot affect any published number: 1e-15 degrees is
+    sub-nanometre, and the evaluation thresholds at 5 NM. So the honest fix is
+    to hash at a tolerance rather than bit-exactly. The guard still catches what
+    it was built for -- a real change to what the generator produces -- and no
+    longer fails on which operating system ran it.
+
+    The limitation this leaves is recorded in `docs/limitations.md`:
+    reproducibility here means "the same scenarios to within 0.1 mm", not
+    "byte-identical files".
+    """
+    digest = hashlib.sha256()
+    for scenario in scenarios:
+        canonical = _canonical(scenario.model_dump(mode="json"))
+        digest.update(json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode())
+    return digest.hexdigest()[:16]

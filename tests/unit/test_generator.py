@@ -12,7 +12,6 @@ the detector would never be shown a close pass it is supposed to ignore.
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -26,7 +25,7 @@ from acp.sim.generator import (
     generate_encounter,
     generate_family,
 )
-from acp.sim.scenario import load_scenario
+from acp.sim.scenario import fingerprint, load_scenario
 
 START = datetime(2026, 1, 1, tzinfo=UTC)
 
@@ -196,11 +195,7 @@ def test_the_nominal_family_still_produces_the_scenarios_the_report_was_measured
         scenario_dir = Path(__file__).resolve().parents[2] / "scenarios"
         scenarios.extend(load_scenario(p) for p in sorted(scenario_dir.glob("*.yaml")))
 
-    digest = hashlib.sha256()
-    for scenario in scenarios:
-        digest.update(scenario.model_dump_json().encode())
-
-    assert digest.hexdigest()[:16] == committed["scenario_set_sha256_16"], (
+    assert fingerprint(scenarios) == committed["scenario_set_sha256_16"], (
         "NOMINAL scenario generation has changed; eval/results/conflict_detection.md "
         "no longer describes the traffic it claims to. Regenerate it and bump "
         "GENERATOR_VERSION."

@@ -33,7 +33,6 @@ across runs of different sizes.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import statistics
 import sys
@@ -62,6 +61,7 @@ from acp.sim.generator import (  # noqa: E402
     generate_family,
 )
 from acp.sim.scenario import SIM_VERSION, Scenario, load_scenario  # noqa: E402
+from acp.sim.scenario import fingerprint as scenario_fingerprint  # noqa: E402
 from eval.conflict_truth import ConflictEvent, TruthConflictFinder  # noqa: E402
 
 RESULTS_DIR = Path(__file__).parent / "results"
@@ -250,11 +250,12 @@ def summarise(outcomes: list[ScenarioOutcome]) -> dict[str, object]:
 
 
 def _fingerprint(scenarios: list[Scenario]) -> str:
-    """Hash of the evaluated scenario set, so a report names its own inputs."""
-    digest = hashlib.sha256()
-    for scenario in scenarios:
-        digest.update(scenario.model_dump_json().encode())
-    return digest.hexdigest()[:16]
+    """Hash of the evaluated scenario set, so a report names its own inputs.
+
+    Delegates to `acp.sim.scenario.fingerprint` so the runner and the guarding
+    test cannot compute it differently -- they used to share only a convention.
+    """
+    return scenario_fingerprint(scenarios)
 
 
 def render_report(

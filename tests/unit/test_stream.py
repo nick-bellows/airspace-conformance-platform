@@ -33,7 +33,14 @@ from acp.services.api.stream import AirspaceBroadcaster, origin_is_allowed
 from acp.storage.stores import LiveAlertStore, LiveTrackStore
 from tests.unit.fakes import FakeAlertStore, FakeLiveStore
 
-NOW = datetime.now(UTC)
+
+# Deliberately a function, not a module-level constant. It was a constant,
+# captured at import time, and the broadcaster filters tracks to a 20-second
+# wall-clock window -- so once the suite took longer than 20 seconds to reach
+# these tests, every frame came back empty. It passed locally and failed on
+# the first CI run, which is the signature of a clock the test does not own.
+def _now() -> datetime:
+    return datetime.now(UTC)
 
 
 @dataclass
@@ -77,8 +84,8 @@ def a_track(track_id: str = "trk-a1b2c3", *, callsign: str = "ACP101") -> TrackU
         track_id=track_id,
         icao24="a1b2c3",
         callsign=callsign,
-        updated_at=NOW,
-        last_report_at=NOW,
+        updated_at=_now(),
+        last_report_at=_now(),
         state=TrackState.CONFIRMED,
         lat=40.0,
         lon=-75.0,
@@ -100,8 +107,8 @@ def an_alert() -> Alert:
         kind=AlertKind.PREDICTED_CONFLICT,
         severity=Severity.CAUTION,
         state=AlertState.NEW,
-        raised_at=NOW,
-        updated_at=NOW,
+        raised_at=_now(),
+        updated_at=_now(),
         track_ids=("trk-a", "trk-b"),
         reason_codes=("horizontal_below_standard",),
         summary="stream test",
@@ -215,7 +222,7 @@ async def test_the_frame_carries_tracks_and_alerts_together() -> None:
 
 
 async def test_stale_tracks_are_excluded_from_the_frame() -> None:
-    old = a_track().model_copy(update={"updated_at": NOW - timedelta(minutes=10)})
+    old = a_track().model_copy(update={"updated_at": _now() - timedelta(minutes=10)})
     live = FakeLiveStore(current={"trk-a1b2c3": old})
     frame = await a_broadcaster(live, window_s=20.0).snapshot()
     assert frame.tracks == []

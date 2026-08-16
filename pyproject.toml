@@ -88,6 +88,7 @@ acp-track = "acp.services.track.__main__:main"
 acp-conformance = "acp.services.conformance.__main__:main"
 # Used by the Kubernetes init containers, which have no `depends_on` to lean on.
 acp-wait-for-schema = "acp.storage.wait_for_schema:main"
+acp-wait-for-kafka = "acp.common.wait_for_kafka:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

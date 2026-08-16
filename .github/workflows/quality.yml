@@ -98,7 +98,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-      - run: pip install -e ".[dev]"
+      # `api` as well as `dev`: `contracts.py --check` renders the OpenAPI
+      # document, which imports the FastAPI app. Installing only `dev` passed
+      # locally -- where the venv has everything -- and failed on the first CI
+      # run with ModuleNotFoundError. Same shape as the very first CI defect an
+      # external review found in this repository.
+      - run: pip install -e ".[dev,api]"
       # Fails if a wire model changed without the committed schema being
       # regenerated. This is the gate that stops a producer silently breaking
       # a consumer, and it is deliberately its own check so the failure is
@@ -263,9 +268,15 @@ jobs:
   perf:
     name: latency budget
     runs-on: ubuntu-latest
-    # Informational. A perf budget that fails the build on a noisy shared
-    # runner teaches people to ignore the job; the numbers are still printed
-    # and docs/latency-budget.md records what the budget means.
+    # Informational, in two layers. ACP_PERF_REPORT_ONLY makes the suite print
+    # every number and relax only the wall-clock thresholds -- it still fails on
+    # anything that is not a timing question. `continue-on-error` is the
+    # belt-and-braces underneath.
+    #
+    # The budgets are a property of the code on a reference machine; a shared
+    # runner is a different machine, and the first CI run of this suite measured
+    # a full cycle at 401.6 ms against 248 ms locally on identical code.
+    # Asserting there would make the job a coin toss.
     continue-on-error: true
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -275,6 +286,8 @@ jobs:
           cache: pip
       - run: pip install -e ".[all]" --extra-index-url https://download.pytorch.org/whl/cpu
       - run: pytest tests/perf -v -s
+        env:
+          ACP_PERF_REPORT_ONLY: "1"
 
   # ---------------------------------------------------------------------------
   # Build the image ONCE, and make every downstream job consume that exact
@@ -549,7 +562,7 @@ jobs:
       - name: wait for the services
         run: |
           for deployment in feed track conformance api; do
-            kubectl -n acp rollout status "deployment/$deployment" --timeout=240s
+            kubectl -n acp rollout status "deployment/$deployment" --timeout=360s
           done
 
       # The point of the smoke test: not "did the pods start" but "did data get

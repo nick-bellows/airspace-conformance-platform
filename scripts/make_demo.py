@@ -21,9 +21,11 @@ Requires the `demo` extra (Pillow).
 from __future__ import annotations
 
 import argparse
+import json
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from PIL import Image, ImageDraw
 
@@ -120,7 +122,14 @@ def _draw_frame(
     return image
 
 
-def build(scenario_path: Path, out: Path, *, every: int, span_nm: float) -> None:
+def build(
+    scenario_path: Path,
+    out: Path,
+    *,
+    every: int,
+    span_nm: float,
+    frames_out: Path | None = None,
+) -> None:
     scenario = load_scenario(scenario_path)
     simulation = Simulation(scenario, datetime(2026, 8, 16, 12, 0, tzinfo=UTC))
     estimator = TrackEstimator()
@@ -129,6 +138,7 @@ def build(scenario_path: Path, out: Path, *, every: int, span_nm: float) -> None
 
     tracks: dict[str, Track] = {}
     frames: list[Image.Image] = []
+    replay: list[dict[str, Any]] = []
     step = 0
 
     while not simulation.finished:
@@ -156,9 +166,33 @@ def build(scenario_path: Path, out: Path, *, every: int, span_nm: float) -> None
             )
 
         if step % every == 0:
-            frames.append(
-                _draw_frame(tracks, alert, step * scenario.sensor.report_interval_s, ref, span_nm)
-            )
+            elapsed = step * scenario.sensor.report_interval_s
+            frames.append(_draw_frame(tracks, alert, elapsed, ref, span_nm))
+            if frames_out is not None:
+                # The same state the GIF frame was drawn from, as data. The web
+                # replay renders this in a canvas, so the page and the animation
+                # cannot disagree about what happened -- they come from one run.
+                replay.append(
+                    {
+                        "t": round(elapsed, 1),
+                        "alert": alert,
+                        "aircraft": [
+                            {
+                                "callsign": track.callsign,
+                                "conflicted": track.conflicted,
+                                "trail": [
+                                    [round(e, 3), round(n, 3)]
+                                    for e, n in (
+                                        to_local_enu(la, lo, ref[0], ref[1])
+                                        for la, lo in track.points[-30:]
+                                    )
+                                ],
+                            }
+                            for track in sorted(tracks.values(), key=lambda x: x.callsign)
+                            if track.points
+                        ],
+                    }
+                )
 
     out.parent.mkdir(parents=True, exist_ok=True)
     frames[0].save(
@@ -171,6 +205,12 @@ def build(scenario_path: Path, out: Path, *, every: int, span_nm: float) -> None
     )
     size_kb = out.stat().st_size / 1024
     print(f"{out}: {len(frames)} frames, {size_kb:.0f} KB")
+
+    if frames_out is not None:
+        frames_out.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"span_nm": span_nm, "interval_ms": 90, "frames": replay}
+        frames_out.write_text(json.dumps(payload, separators=(",", ":")), encoding="utf-8")
+        print(f"{frames_out}: {len(replay)} frames, {frames_out.stat().st_size / 1024:.0f} KB")
     if size_kb > 4096:
         print("  warning: over 4 MB; raise --every or shorten the scenario")
 
@@ -185,9 +225,21 @@ def main(argv: list[str] | None = None) -> int:
         "--every", type=int, default=6, help="render one frame per N simulated seconds"
     )
     parser.add_argument("--span-nm", type=float, default=95.0, help="width of the view")
+    parser.add_argument(
+        "--frames-out",
+        type=Path,
+        default=REPO_ROOT / "docs/assets/replay.json",
+        help="also write the replay log the web page plays back",
+    )
     args = parser.parse_args(argv)
 
-    build(args.scenario, args.out, every=args.every, span_nm=args.span_nm)
+    build(
+        args.scenario,
+        args.out,
+        every=args.every,
+        span_nm=args.span_nm,
+        frames_out=args.frames_out,
+    )
     return 0
 
 

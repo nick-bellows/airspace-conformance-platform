@@ -20,6 +20,7 @@ those terms rather than as a claim about a deployed system.
 
 from __future__ import annotations
 
+import os
 import statistics
 import time
 from datetime import UTC, datetime
@@ -113,9 +114,33 @@ def test_the_tracker_keeps_up_with_five_hundred_aircraft() -> None:
 
     p95 = statistics.quantiles(durations_ms, n=20)[-1]
     assert estimator.live_track_count >= TARGET_AIRCRAFT * 0.9, "not enough traffic to be a test"
-    assert p95 < PER_REPORT_BUDGET_MS, (
-        f"per-report p95 {p95:.3f} ms exceeds the {PER_REPORT_BUDGET_MS} ms budget"
-    )
+    within_budget(p95, PER_REPORT_BUDGET_MS, "per-report p95")
+
+
+#: Whether a budget overrun should fail or merely be reported.
+#:
+#: The budgets are a property of the *code*, measured on a reference machine. A
+#: shared CI runner is a different machine -- the first run of this suite in
+#: GitHub Actions produced a full cycle of 401.6 ms against the 248 ms measured
+#: locally, on identical code. Asserting there would make the job a coin toss
+#: and teach everyone to ignore a red perf check, which is worse than not
+#: measuring at all.
+#:
+#: So CI sets ACP_PERF_REPORT_ONLY=1: the suite still runs, still prints every
+#: number, and still fails on anything that is not a timing question (too little
+#: traffic to be a valid test, a conflict never detected, the documented budget
+#: drifting from the enforced one). Only the wall-clock thresholds relax.
+REPORT_ONLY = bool(os.environ.get("ACP_PERF_REPORT_ONLY"))
+
+
+def within_budget(actual_ms: float, budget_ms: float, what: str) -> None:
+    """Assert a timing, unless this is a report-only run."""
+    message = f"{what}: {actual_ms:.3f} ms against a {budget_ms} ms budget"
+    if REPORT_ONLY:
+        verdict = "within" if actual_ms < budget_ms else "OVER"
+        print(f"  [report-only] {verdict} budget -- {message}")
+        return
+    assert actual_ms < budget_ms, message
 
 
 async def test_a_conflict_scan_of_a_busy_sector_fits_the_budget() -> None:
@@ -155,10 +180,7 @@ async def test_a_conflict_scan_of_a_busy_sector_fits_the_budget() -> None:
         else max(durations_ms)
     )
     assert runner.live_tracks >= TARGET_AIRCRAFT * 0.9, "not enough traffic to be a test"
-    assert p95 < SCAN_BUDGET_MS, (
-        f"scan p95 {p95:.1f} ms over {runner.live_tracks} tracks exceeds "
-        f"the {SCAN_BUDGET_MS} ms budget"
-    )
+    within_budget(p95, SCAN_BUDGET_MS, "conflict-scan p95")
 
 
 async def test_a_full_cycle_at_target_load_fits_inside_the_report_interval() -> None:
@@ -198,10 +220,7 @@ async def test_a_full_cycle_at_target_load_fits_inside_the_report_interval() -> 
         f"\ncycle at {runner.live_tracks} aircraft: "
         f"median {median:.1f} ms, p95 {p95:.1f} ms, budget {CYCLE_BUDGET_MS:.0f} ms"
     )
-    assert p95 < CYCLE_BUDGET_MS, (
-        f"cycle p95 {p95:.1f} ms at {runner.live_tracks} aircraft exceeds "
-        f"the {CYCLE_BUDGET_MS} ms budget"
-    )
+    within_budget(p95, CYCLE_BUDGET_MS, "full-cycle p95")
 
 
 async def test_detection_latency_is_bounded_by_the_scan_interval() -> None:

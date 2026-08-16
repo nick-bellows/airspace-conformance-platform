@@ -79,6 +79,24 @@ spec:
         runAsNonRoot: true
         runAsUser: 1001
         seccompProfile: { type: RuntimeDefault }
+      # Kubernetes has no `depends_on`, so a Kafka client starts before the
+      # broker is listening and crash-loops until it is. Harmless in principle,
+      # and it pushed this service past a 240s rollout timeout on the first CI
+      # run. It waits; the feed still owns topic creation.
+      initContainers:
+        - name: wait-for-kafka
+          image: acp:dev
+          imagePullPolicy: IfNotPresent
+          args: ["acp-wait-for-kafka"]
+          envFrom:
+            - configMapRef: { name: acp-config }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 250m, memory: 256Mi }
       containers:
         - name: feed
           image: acp:dev
@@ -124,11 +142,27 @@ spec:
         runAsNonRoot: true
         runAsUser: 1001
         seccompProfile: { type: RuntimeDefault }
-      # Kubernetes has no `depends_on: service_completed_successfully`, so the
-      # ordering compose gets for free has to be built here. This waits for the
-      # schema; it deliberately does not migrate, because two replicas racing
-      # `alembic upgrade head` is worse than either of them waiting.
+      # Kubernetes has none of compose's `depends_on`, so the ordering it gets
+      # for free is built here instead. Init containers run in sequence: the
+      # broker first, then the schema.
+      #
+      # Neither migrates or creates anything -- they only wait. One Job owns the
+      # migration and the feed owns topic creation; two replicas racing
+      # `alembic upgrade head` would be worse than either of them waiting.
       initContainers:
+        - name: wait-for-kafka
+          image: acp:dev
+          imagePullPolicy: IfNotPresent
+          args: ["acp-wait-for-kafka"]
+          envFrom:
+            - configMapRef: { name: acp-config }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 250m, memory: 256Mi }
         - name: wait-for-schema
           image: acp:dev
           imagePullPolicy: IfNotPresent
@@ -186,6 +220,24 @@ spec:
         runAsNonRoot: true
         runAsUser: 1001
         seccompProfile: { type: RuntimeDefault }
+      # Kubernetes has no `depends_on`, so a Kafka client starts before the
+      # broker is listening and crash-loops until it is. Harmless in principle,
+      # and it pushed this service past a 240s rollout timeout on the first CI
+      # run. It waits; the feed still owns topic creation.
+      initContainers:
+        - name: wait-for-kafka
+          image: acp:dev
+          imagePullPolicy: IfNotPresent
+          args: ["acp-wait-for-kafka"]
+          envFrom:
+            - configMapRef: { name: acp-config }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 250m, memory: 256Mi }
       containers:
         - name: conformance
           image: acp:dev
