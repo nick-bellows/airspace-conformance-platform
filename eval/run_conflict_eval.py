@@ -121,7 +121,12 @@ class _CollectingPublisher:
 
 
 async def replay(
-    scenario: Scenario, *, horizontal_nm: float, vertical_ft: float, lookahead_s: float
+    scenario: Scenario,
+    *,
+    horizontal_nm: float,
+    vertical_ft: float,
+    lookahead_s: float,
+    probability_threshold: float | None = None,
 ) -> ScenarioOutcome:
     """Run one scenario through the real pipeline and score it."""
     start = datetime(2026, 1, 1, tzinfo=UTC)
@@ -135,7 +140,10 @@ async def replay(
         subscriber=None,
         publisher=publisher,  # type: ignore[arg-type]
         monitor=SeparationMonitor(
-            horizontal_nm=horizontal_nm, vertical_ft=vertical_ft, lookahead_s=lookahead_s
+            horizontal_nm=horizontal_nm,
+            vertical_ft=vertical_ft,
+            lookahead_s=lookahead_s,
+            probability_threshold=probability_threshold,
         ),
         manager=AlertManager(),
     )

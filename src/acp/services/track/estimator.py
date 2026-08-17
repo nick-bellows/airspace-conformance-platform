@@ -57,6 +57,9 @@ class TrackRecord:
     vertical_rate_fpm: float
     turn_rate_deg_s: float
     position_uncertainty_m: float
+    velocity_uncertainty_kt: float
+    altitude_uncertainty_ft: float
+    vertical_rate_uncertainty_fpm: float
     innovation_nm: float
     squawk: str | None
     scenario_id: str | None
@@ -165,6 +168,9 @@ class TrackEstimator:
             vertical_rate_fpm=estimate.vertical_rate_fpm,
             turn_rate_deg_s=0.0,
             position_uncertainty_m=estimate.position_uncertainty_m,
+            velocity_uncertainty_kt=estimate.velocity_uncertainty_kt,
+            altitude_uncertainty_ft=estimate.altitude_uncertainty_ft,
+            vertical_rate_uncertainty_fpm=estimate.vertical_rate_uncertainty_fpm,
             innovation_nm=0.0,
             squawk=report.squawk,
             scenario_id=report.scenario_id,
@@ -206,6 +212,9 @@ class TrackEstimator:
         record.track_deg = estimate.track_deg
         record.vertical_rate_fpm = estimate.vertical_rate_fpm
         record.position_uncertainty_m = estimate.position_uncertainty_m
+        record.velocity_uncertainty_kt = estimate.velocity_uncertainty_kt
+        record.altitude_uncertainty_ft = estimate.altitude_uncertainty_ft
+        record.vertical_rate_uncertainty_fpm = estimate.vertical_rate_uncertainty_fpm
         record.innovation_nm = estimate.innovation_nm
         record.squawk = report.squawk or record.squawk
         record.callsign = report.callsign or record.callsign
@@ -231,6 +240,9 @@ class TrackEstimator:
             record.lon = estimate.lon
             record.altitude_ft = estimate.altitude_ft
             record.position_uncertainty_m = estimate.position_uncertainty_m
+            record.velocity_uncertainty_kt = estimate.velocity_uncertainty_kt
+            record.altitude_uncertainty_ft = estimate.altitude_uncertainty_ft
+            record.vertical_rate_uncertainty_fpm = estimate.vertical_rate_uncertainty_fpm
 
         return TrackUpdate(
             track_id=record.track_id,
@@ -247,6 +259,9 @@ class TrackEstimator:
             vertical_rate_fpm=record.vertical_rate_fpm,
             turn_rate_deg_s=record.turn_rate_deg_s,
             position_uncertainty_m=record.position_uncertainty_m,
+            velocity_uncertainty_kt=record.velocity_uncertainty_kt,
+            altitude_uncertainty_ft=record.altitude_uncertainty_ft,
+            vertical_rate_uncertainty_fpm=record.vertical_rate_uncertainty_fpm,
             update_count=record.update_count,
             innovation_nm=record.innovation_nm,
             squawk=record.squawk,

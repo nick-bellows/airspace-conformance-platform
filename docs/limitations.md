@@ -80,8 +80,17 @@ only visible to someone who opens the report:
   never actually loses separation. The cause is thresholding a point estimate: a
   predicted 4.9 NM miss alerts and a 5.1 NM miss does not, while the velocity
   estimate behind that prediction carries enough noise to move the answer across
-  the line. The principled fix is probabilistic detection using the covariance
-  the Kalman filter already maintains.
+  the line. **That explanation has now been tested and is not sufficient.** A
+  probabilistic detector using the filter's covariance gains +0.036 precision on
+  the nominal family and +0.006 — confidence interval spanning zero — on shifted
+  traffic it was not tuned against. The cause of 0.57 is therefore unknown, which
+  is a weaker position than this section held before and an honest one.
+  [ADR 0012](adr/0012-probabilistic-conflict-detection.md).
+- **The probabilistic detector's covariance model is isotropic.** It treats each
+  track's horizontal uncertainty as circular when the filter's is mildly
+  elliptical, and does not propagate turn rate, so a turning aircraft's future
+  position is more uncertain than the model says. Neither error is quantified.
+  Given the detector is not the default, they are recorded rather than fixed.
 - **Recall is high partly because the test is easy.** The generated encounters
   are mostly constant-velocity approaches, which is exactly the assumption the
   detector makes. Conflicts created by a late, unforecast turn are

@@ -111,9 +111,19 @@ only the noisy observation stream.
 alerts concern a pair that never actually loses separation, because the detector
 thresholds a point estimate: a predicted 4.9 NM miss alerts, 5.1 NM does not, and
 the velocity estimate behind that prediction carries enough noise to move the
-answer across the line. The principled fix is probabilistic detection using the
-covariance the filter already maintains. **Recall of 1.00 is also weaker than it
-looks** — the generated encounters are mostly constant-velocity approaches, which
+answer across the line.
+
+That was the diagnosis, so the fix was built: a probabilistic detector that uses
+the covariance the filter already maintains and alerts on the probability of a
+breach rather than on the side of a line. **It did not work.** It wins on the
+family it was tuned against and the advantage vanishes on shifted traffic —
++0.006 precision, confidence interval spanning zero. The deterministic detector
+is still the default and the cause of 0.57 is now genuinely unknown, the obvious
+explanation having been tested and found insufficient.
+[`detector_comparison.md`](eval/results/detector_comparison.md) has both tables;
+[ADR 0012](docs/adr/0012-probabilistic-conflict-detection.md) has the reasoning.
+
+**Recall of 1.00 is also weaker than it looks** — the generated encounters are mostly constant-velocity approaches, which
 is exactly the assumption the detector makes.
 
 ### Trajectory prediction

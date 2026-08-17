@@ -415,6 +415,18 @@
             "title": "Altitude Ft",
             "type": "number"
           },
+          "altitude_uncertainty_ft": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altitude Uncertainty Ft"
+          },
           "callsign": {
             "anyOf": [
               {
@@ -530,9 +542,33 @@
             "title": "Updated At",
             "type": "string"
           },
+          "velocity_uncertainty_kt": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Velocity Uncertainty Kt"
+          },
           "vertical_rate_fpm": {
             "title": "Vertical Rate Fpm",
             "type": "number"
+          },
+          "vertical_rate_uncertainty_fpm": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vertical Rate Uncertainty Fpm"
           }
         },
         "required": [

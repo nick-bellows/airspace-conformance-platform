@@ -113,6 +113,16 @@ class TrackUpdate(Frozen):
     #: small when the aircraft flies as modelled, large when it manoeuvres.
     #: Optional because a track that has only ever coasted has no innovation.
     innovation_nm: Annotated[float, Field(ge=0.0)] | None = None
+    #: Per-axis one-sigma uncertainties from the filter's covariance, carried so
+    #: the conformance service can weigh a predicted conflict by how well the
+    #: tracks are actually known rather than thresholding a point estimate.
+    #: Optional so a consumer written against the previous shape keeps working;
+    #: the probabilistic detector degrades to the deterministic test when they
+    #: are absent, which is what makes this a backward-compatible addition
+    #: rather than a schema version bump.
+    velocity_uncertainty_kt: Annotated[float, Field(ge=0.0)] | None = None
+    altitude_uncertainty_ft: Annotated[float, Field(ge=0.0)] | None = None
+    vertical_rate_uncertainty_fpm: Annotated[float, Field(ge=0.0)] | None = None
     squawk: Squawk | None = None
     source: DataSource = DataSource.SIMULATOR
     scenario_id: str | None = None

@@ -1,0 +1,160 @@
+{
+  "meta": {
+    "generated_at": "2026-08-17T02:18:39.775763+00:00",
+    "seed": 20260815,
+    "scenarios": 120,
+    "generated_scenarios": 120,
+    "simulated_hours": 30.0,
+    "scenario_set_sha256_16": "c973a5d83326c7ed",
+    "generator_version": "acp-gen-v1",
+    "detector_version": "acp-separation-v1",
+    "family": "shifted"
+  },
+  "rows": [
+    {
+      "threshold": null,
+      "detector": "deterministic",
+      "recall": 0.9333,
+      "precision": 0.4,
+      "alerts_raised": 70,
+      "false_alerts": 42,
+      "false_alerts_per_hour": 1.4,
+      "median_lead_time_s": 165.0,
+      "detected_events": 28,
+      "truth_conflict_events": 30
+    },
+    {
+      "threshold": 0.01,
+      "detector": "probabilistic p>=0.01",
+      "recall": 0.9667,
+      "precision": 0.2593,
+      "alerts_raised": 108,
+      "false_alerts": 80,
+      "false_alerts_per_hour": 2.67,
+      "median_lead_time_s": 244.0,
+      "detected_events": 29,
+      "truth_conflict_events": 30,
+      "vs_deterministic": {
+        "precision_delta": -0.1407,
+        "ci95_low": -0.2003,
+        "ci95_high": -0.0913,
+        "excludes_zero": true,
+        "iterations": 10000
+      }
+    },
+    {
+      "threshold": 0.05,
+      "detector": "probabilistic p>=0.05",
+      "recall": 0.9667,
+      "precision": 0.2828,
+      "alerts_raised": 99,
+      "false_alerts": 71,
+      "false_alerts_per_hour": 2.37,
+      "median_lead_time_s": 237.0,
+      "detected_events": 29,
+      "truth_conflict_events": 30,
+      "vs_deterministic": {
+        "precision_delta": -0.1172,
+        "ci95_low": -0.1733,
+        "ci95_high": -0.0717,
+        "excludes_zero": true,
+        "iterations": 10000
+      }
+    },
+    {
+      "threshold": 0.1,
+      "detector": "probabilistic p>=0.1",
+      "recall": 0.9667,
+      "precision": 0.2947,
+      "alerts_raised": 95,
+      "false_alerts": 67,
+      "false_alerts_per_hour": 2.23,
+      "median_lead_time_s": 216.0,
+      "detected_events": 29,
+      "truth_conflict_events": 30,
+      "vs_deterministic": {
+        "precision_delta": -0.1053,
+        "ci95_low": -0.1583,
+        "ci95_high": -0.062,
+        "excludes_zero": true,
+        "iterations": 10000
+      }
+    },
+    {
+      "threshold": 0.2,
+      "detector": "probabilistic p>=0.2",
+      "recall": 0.9667,
+      "precision": 0.3182,
+      "alerts_raised": 88,
+      "false_alerts": 60,
+      "false_alerts_per_hour": 2.0,
+      "median_lead_time_s": 200.0,
+      "detected_events": 29,
+      "truth_conflict_events": 30,
+      "vs_deterministic": {
+        "precision_delta": -0.0818,
+        "ci95_low": -0.1292,
+        "ci95_high": -0.0436,
+        "excludes_zero": true,
+        "iterations": 10000
+      }
+    },
+    {
+      "threshold": 0.35,
+      "detector": "probabilistic p>=0.35",
+      "recall": 0.9333,
+      "precision": 0.3784,
+      "alerts_raised": 74,
+      "false_alerts": 46,
+      "false_alerts_per_hour": 1.53,
+      "median_lead_time_s": 165.0,
+      "detected_events": 28,
+      "truth_conflict_events": 30,
+      "vs_deterministic": {
+        "precision_delta": -0.0216,
+        "ci95_low": -0.0513,
+        "ci95_high": 0.0,
+        "excludes_zero": false,
+        "iterations": 10000
+      }
+    },
+    {
+      "threshold": 0.5,
+      "detector": "probabilistic p>=0.5",
+      "recall": 0.9333,
+      "precision": 0.4058,
+      "alerts_raised": 69,
+      "false_alerts": 41,
+      "false_alerts_per_hour": 1.37,
+      "median_lead_time_s": 165.0,
+      "detected_events": 28,
+      "truth_conflict_events": 30,
+      "vs_deterministic": {
+        "precision_delta": 0.0058,
+        "ci95_low": 0.0,
+        "ci95_high": 0.0205,
+        "excludes_zero": false,
+        "iterations": 10000
+      }
+    },
+    {
+      "threshold": 0.7,
+      "detector": "probabilistic p>=0.7",
+      "recall": 0.9333,
+      "precision": 0.459,
+      "alerts_raised": 61,
+      "false_alerts": 33,
+      "false_alerts_per_hour": 1.1,
+      "median_lead_time_s": 155.0,
+      "detected_events": 28,
+      "truth_conflict_events": 30,
+      "vs_deterministic": {
+        "precision_delta": 0.059,
+        "ci95_low": 0.0246,
+        "ci95_high": 0.1014,
+        "excludes_zero": true,
+        "iterations": 10000
+      }
+    }
+  ]
+}

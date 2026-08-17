@@ -225,6 +225,12 @@ def test_the_feature_extractor_only_accepts_track_updates() -> None:
         "vertical_rate_fpm",
         "turn_rate_deg_s",
         "position_uncertainty_m",
+        # Filter covariance, not intent: derived from the observation stream
+        # alone, and the reason the probabilistic detector can weigh a
+        # prediction by how well the track is known.
+        "velocity_uncertainty_kt",
+        "altitude_uncertainty_ft",
+        "vertical_rate_uncertainty_fpm",
         "update_count",
         "innovation_nm",
         "squawk",

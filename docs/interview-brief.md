@@ -185,11 +185,21 @@ design exists precisely so failure is bounded. I used one heavily to *build* it,
 which is a different question, and that's written up separately.
 
 **"Precision of 0.57 seems bad."**
-It is. The cause is thresholding a point estimate — a predicted 4.9 NM miss
-alerts, 5.1 NM doesn't, and the velocity estimate carries enough noise to move
-the answer across that line. The fix is probabilistic detection using the
-covariance the filter already maintains, and it's the one technical thing in
-`future-work.md` I'd build next.
+It is. I thought I knew why — the detector thresholds a point estimate, and a
+predicted 4.9 NM miss alerts while 5.1 NM doesn't. So I built the principled
+fix: a probabilistic detector using the covariance the Kalman filter already
+maintains, alerting on the probability of a breach instead. On the family I
+tuned it against it won, +0.036 precision, confidence interval excluding zero.
+On shifted traffic it was +0.006 with the interval spanning zero. It didn't
+replicate, so the deterministic detector is still the default and I now don't
+know what causes 0.57. That's the most useful thing I did to this project.
+
+**"Isn't building something that didn't work a waste?"**
+The alternative was leaving a confident guess in the documentation. It said the
+cause was point-estimate thresholding; that was testable, I tested it, and it's
+insufficient. The repository is more honest than it was and the next step is
+better targeted — characterise the 29 false alerts directly instead of
+theorising. I'd rather show that than a feature that shipped on a hunch.
 
 ### On the engineering
 

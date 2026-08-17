@@ -39,6 +39,7 @@ innovation the conformance monitor can see without the filter falling apart.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -98,7 +99,17 @@ class FilterEstimate:
     vertical_rate_fpm: float
     #: One-sigma horizontal position uncertainty, in metres, from the covariance.
     #: Unlike M1's constant, this responds to dropouts and to manoeuvres.
+    #: This is the RSS over both horizontal axes, not a per-axis sigma.
     position_uncertainty_m: float
+    #: Per-axis one-sigma velocity uncertainty, in knots. This is the term that
+    #: dominates a *predicted* position: position error grows linearly in the
+    #: lookahead while this stays roughly constant, so at five minutes out it
+    #: is worth far more than the position uncertainty above.
+    velocity_uncertainty_kt: float
+    #: One-sigma altitude uncertainty, in feet.
+    altitude_uncertainty_ft: float
+    #: One-sigma vertical-rate uncertainty, in feet per minute.
+    vertical_rate_uncertainty_fpm: float
     #: Distance between the predicted and reported position, in nautical miles,
     #: for the correction that produced this estimate. Zero on initialisation.
     #: This is the manoeuvre signal.
@@ -304,6 +315,12 @@ class TrackFilter:
         position_variance_nm2 = float(self._p[_EAST, _EAST] + self._p[_NORTH, _NORTH])
         uncertainty_m = float(np.sqrt(max(0.0, position_variance_nm2))) * 1852.0
 
+        # Per-axis, so the conflict-probability model can treat the horizontal
+        # error as an isotropic 2-D Gaussian. Averaging the two axes rather
+        # than summing them is the difference between a sigma and an RSS, and
+        # getting it wrong would inflate every predicted uncertainty by 41%.
+        velocity_variance_kt2 = 0.5 * float(self._p[_VEAST, _VEAST] + self._p[_VNORTH, _VNORTH])
+
         return FilterEstimate(
             lat=lat,
             lon=lon,
@@ -312,6 +329,9 @@ class TrackFilter:
             track_deg=track,
             vertical_rate_fpm=float(self._x[_VRATE]),
             position_uncertainty_m=uncertainty_m,
+            velocity_uncertainty_kt=math.sqrt(max(0.0, velocity_variance_kt2)),
+            altitude_uncertainty_ft=math.sqrt(max(0.0, float(self._p[_ALT, _ALT]))),
+            vertical_rate_uncertainty_fpm=math.sqrt(max(0.0, float(self._p[_VRATE, _VRATE]))),
             innovation_nm=self._last_innovation_nm,
         )
 

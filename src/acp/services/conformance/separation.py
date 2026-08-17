@@ -36,13 +36,27 @@ airspace and run a monitor per sector, which is what real ATC does and why
 sectors exist at all. Warning rather than failing is deliberate: degraded
 geometry is still far better than no conflict detection.
 
+## Two detectors
+
+By default a conflict is declared when the predicted minimum breaches both
+standards -- a threshold on a point estimate, and the behaviour every published
+number was measured on.
+
+Passing `probability_threshold` switches to the probabilistic detector, which
+asks how *likely* a breach is given the covariance the filter is already
+maintaining, rather than which side of a line the mean landed on. The maths is
+in `probability.py` and the reasoning is ADR 0012; the head-to-head measurement
+is `eval/results/detector_comparison.md`. The two share all the geometry below
+-- only the final accept/reject differs.
+
 ## What this deliberately does not do
 
-Real conflict probes account for turn intent from the flight plan, for
-climb/descent profiles rather than a constant vertical rate, and for the
-uncertainty in each track. This one assumes straight-line, constant-rate flight
-for both aircraft over the whole lookahead. That is why the lookahead is minutes
-rather than tens of minutes: the assumption decays quickly.
+Real conflict probes account for turn intent from the flight plan and for
+climb/descent profiles rather than a constant vertical rate. This one assumes
+straight-line, constant-rate flight for both aircraft over the whole lookahead.
+That is why the lookahead is minutes rather than tens of minutes: the assumption
+decays quickly. The probabilistic detector widens the *uncertainty* around that
+assumption; it does not replace the assumption.
 """
 
 from __future__ import annotations
@@ -54,6 +68,11 @@ from dataclasses import dataclass
 from acp.common.contracts import TrackUpdate
 from acp.common.geodesy import knots_to_nm_per_second, to_local_enu
 from acp.common.logging import get_logger
+from acp.services.conformance.probability import (
+    SIGMA_CUTOFF,
+    conflict_probability,
+    projected_sigma,
+)
 
 _log = get_logger(__name__)
 
@@ -95,6 +114,11 @@ class Conflict:
     lookahead_s: float
     horizontal_standard_nm: float
     vertical_standard_ft: float
+    #: P(both standards breached at closest approach), or `None` when the
+    #: deterministic detector produced this conflict. Reported whether or not
+    #: it was the deciding factor, so an operator can see how firm a warning is
+    #: and an evaluation can sweep the threshold without re-running the scan.
+    probability: float | None = None
 
     @property
     def key(self) -> str:
@@ -138,12 +162,28 @@ class SeparationMonitor:
         lookahead_s: float = DEFAULT_LOOKAHEAD_S,
         min_updates: int = MIN_UPDATES_FOR_CONFLICT,
         max_radius_nm: float = MAX_PICTURE_RADIUS_NM,
+        probability_threshold: float | None = None,
     ) -> None:
+        """`probability_threshold` switches on the probabilistic detector.
+
+        Left as `None` the detector thresholds the point estimate, which is the
+        behaviour every published number before M7 was measured on. Set to a
+        probability in (0, 1], a pair is reported when the chance that *both*
+        standards are breached at closest approach reaches it, given the
+        covariance the filter is already maintaining.
+
+        The probabilistic path degrades to the deterministic one per pair when
+        either track arrives without uncertainty fields -- an older producer, or
+        a replayed message from before the contract gained them.
+        """
+        if probability_threshold is not None and not 0.0 < probability_threshold <= 1.0:
+            raise ValueError("probability_threshold must be in (0, 1]")
         self._horizontal_nm = horizontal_nm
         self._vertical_ft = vertical_ft
         self._lookahead_s = lookahead_s
         self._min_updates = min_updates
         self._max_radius_nm = max_radius_nm
+        self._probability_threshold = probability_threshold
 
     def scan(self, tracks: list[TrackUpdate]) -> list[Conflict]:
         """Test every plausible pair and return the conflicts found."""
@@ -253,6 +293,71 @@ class SeparationMonitor:
                     pairs.append((first, second))
         return pairs
 
+    @staticmethod
+    def _uncertainty(track: TrackUpdate) -> tuple[float, float, float, float] | None:
+        """Per-axis sigmas as (position NM, velocity kt, altitude ft, rate fpm).
+
+        `None` when the producer did not send them, which is what makes the
+        probabilistic detector degrade to the deterministic one rather than
+        inventing a covariance it does not have.
+        """
+        if (
+            track.velocity_uncertainty_kt is None
+            or track.altitude_uncertainty_ft is None
+            or track.vertical_rate_uncertainty_fpm is None
+        ):
+            return None
+        # `position_uncertainty_m` is the RSS over both horizontal axes; the
+        # model wants a per-axis sigma, hence the sqrt(2).
+        position_nm = track.position_uncertainty_m / 1852.0 / math.sqrt(2.0)
+        return (
+            position_nm,
+            track.velocity_uncertainty_kt,
+            track.altitude_uncertainty_ft,
+            track.vertical_rate_uncertainty_fpm,
+        )
+
+    def _vertical_slack(self, first: _Kinematics, second: _Kinematics) -> float:
+        """How far the cheap vertical rejection must be widened, in feet."""
+        if self._probability_threshold is None:
+            return 0.0
+        a = self._uncertainty(first.track)
+        b = self._uncertainty(second.track)
+        if a is None or b is None:
+            return 0.0
+        return SIGMA_CUTOFF * projected_sigma(
+            a[2], b[2], a[3] / 60.0, b[3] / 60.0, self._lookahead_s
+        )
+
+    def _probability(
+        self,
+        first: _Kinematics,
+        second: _Kinematics,
+        min_horizontal_nm: float,
+        min_vertical_ft: float,
+        t_cpa_s: float,
+    ) -> float | None:
+        """P(conflict), or `None` if this pair must be judged deterministically."""
+        if self._probability_threshold is None:
+            return None
+        a = self._uncertainty(first.track)
+        b = self._uncertainty(second.track)
+        if a is None or b is None:
+            return None
+
+        horizontal_sigma = projected_sigma(
+            a[0], b[0], knots_to_nm_per_second(a[1]), knots_to_nm_per_second(b[1]), t_cpa_s
+        )
+        vertical_sigma = projected_sigma(a[2], b[2], a[3] / 60.0, b[3] / 60.0, t_cpa_s)
+        return conflict_probability(
+            min_horizontal_nm=min_horizontal_nm,
+            min_vertical_ft=min_vertical_ft,
+            horizontal_sigma_nm=horizontal_sigma,
+            vertical_sigma_ft=vertical_sigma,
+            horizontal_standard_nm=self._horizontal_nm,
+            vertical_standard_ft=self._vertical_ft,
+        )
+
     def _test_pair(self, first: _Kinematics, second: _Kinematics) -> Conflict | None:
         # Vertical rejection first, and it is exact rather than a heuristic: if
         # the closest the two can possibly come vertically within the lookahead
@@ -268,7 +373,14 @@ class SeparationMonitor:
         # lives.
         vertical_now = abs(second.altitude_ft - first.altitude_ft)
         max_vertical_closure = abs(second.v_alt_fpm - first.v_alt_fpm) / 60.0 * self._lookahead_s
-        if vertical_now - max_vertical_closure >= self._vertical_ft:
+        # In probabilistic mode the rejection must be widened by the altitude
+        # uncertainty, or it would discard pairs the probability model would
+        # have scored above threshold -- a fast pre-filter silently overruling
+        # the detector. Beyond the cutoff the probability is exactly zero, so
+        # widening by that many sigma keeps the rejection exact.
+        if vertical_now - max_vertical_closure - self._vertical_slack(first, second) >= (
+            self._vertical_ft
+        ):
             return None
 
         rel_east = second.east_nm - first.east_nm
@@ -295,11 +407,16 @@ class SeparationMonitor:
         rel_v_alt_ft_s = (second.v_alt_fpm - first.v_alt_fpm) / 60.0
         min_vertical = abs((second.altitude_ft - first.altitude_ft) + rel_v_alt_ft_s * t_cpa)
 
-        # Both standards, at the same moment. Either alone is routine.
-        if min_horizontal >= self._horizontal_nm or min_vertical >= self._vertical_ft:
+        probability = self._probability(first, second, min_horizontal, min_vertical, t_cpa)
+        if probability is None:
+            # Both standards, at the same moment. Either alone is routine.
+            if min_horizontal >= self._horizontal_nm or min_vertical >= self._vertical_ft:
+                return None
+        elif probability < (self._probability_threshold or 0.0):
             return None
 
         return Conflict(
+            probability=probability,
             first_track_id=first.track.track_id,
             second_track_id=second.track.track_id,
             first_callsign=first.track.callsign,

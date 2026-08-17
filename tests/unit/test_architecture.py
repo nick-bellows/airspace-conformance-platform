@@ -65,6 +65,25 @@ def _imported_modules(path: Path) -> set[str]:
     return found
 
 
+def _third_party_roots(path: Path) -> set[str]:
+    """Top-level package of every absolute import in this file.
+
+    Separate from `_imported_modules`, which filters to `acp.*` because it
+    exists to police *internal* dependency direction. A test about third-party
+    dependencies needs the imports that one deliberately discards -- and the
+    first version of this reused it, so it saw nothing and passed against a
+    file with `import scipy.stats` sitting at the top.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    found: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            found.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and not node.level and node.module:
+            found.add(node.module.split(".")[0])
+    return found
+
+
 def _source_files() -> list[Path]:
     return sorted(PACKAGE_ROOT.rglob("*.py"))
 
@@ -90,6 +109,32 @@ def _imports_any_of(path: Path, forbidden: set[str]) -> set[str]:
         for imported in _imported_modules(path)
         if any(imported == f or imported.startswith(f + ".") for f in forbidden)
     }
+
+
+@pytest.mark.parametrize("path", _source_files(), ids=_module_name)
+def test_only_the_ml_package_may_import_the_heavy_scientific_stack(path: Path) -> None:
+    """Everything outside `acp.ml` runs on the base dependencies alone.
+
+    The `degradation` CI job proves the services start and detect conflicts
+    with the ml extra genuinely uninstalled, but it proves it for one code
+    path at a time. This proves it for every module at once, statically.
+
+    scipy is the one worth naming: it is not a declared dependency at all, it
+    only arrives as a transitive of scikit-learn, so importing it anywhere in
+    the runtime would work on a developer machine and fail in the service
+    image. That is why `acp.services.conformance.probability` computes a
+    non-central chi-squared CDF by hand instead of importing one, and this is
+    the test that keeps it honest.
+    """
+    module = _module_name(path)
+    if module.startswith("acp.ml"):
+        pytest.skip("the ml package is where the heavy stack is allowed")
+
+    offenders = _third_party_roots(path) & {"scipy", "sklearn", "torch"}
+    assert not offenders, (
+        f"{module} imports {sorted(offenders)}, which the base install does not have. "
+        "Only acp.ml may, and only behind the ml extra."
+    )
 
 
 @pytest.mark.parametrize("path", _source_files(), ids=_module_name)

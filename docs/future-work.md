@@ -11,32 +11,45 @@ answered by [`../README.md`](../README.md),
 
 ---
 
-## 1. The one thing worth building next
+## 1. The one thing worth building next — built, and it did not work
 
-**Probabilistic conflict detection.**
+**Probabilistic conflict detection.** This section used to be the plan. It has
+been built, measured, and the result is a negative one, so it stays here as a
+finding rather than moving to the feature list.
 
-Precision is 0.57: two in five alerts concern a pair that never actually loses
-separation. The cause is thresholding a point estimate — a predicted 4.9 NM miss
-alerts, 5.1 NM does not, and the velocity estimate behind that prediction carries
-enough noise to move the answer across the line.
+The reasoning was sound: precision is 0.57 because the detector thresholds a
+point estimate — a predicted 4.9 NM miss alerts, 5.1 NM does not, and the
+velocity estimate carries enough noise to move the answer across that line. The
+Kalman filter already maintains the covariance needed to ask *what is the
+probability these two violate separation* instead. So it now does, and
+[`eval/results/detector_comparison.md`](../eval/results/detector_comparison.md)
+scores both detectors on identical traffic across a swept threshold.
 
-The Kalman filter already maintains the covariance needed to ask a better
-question: *what is the probability these two violate separation* rather than
-*will the predicted miss distance be under 5 NM*. Propagating both covariances to
-the closest point of approach and integrating over the protected zone replaces a
-threshold with a probability, which is also the right input for a
-severity ranking.
+**On the nominal family one threshold won.** `p >= 0.5` raised precision from
+0.574 to 0.609 at unchanged recall and lead time — +0.036, scenario-clustered
+95% CI [+0.008, +0.076], excluding zero.
 
-**Why this one and not the others.** It attacks the weakest published number in
-the repository with a method the system already has the inputs for, and the
-result is publishable either way — rerunning the committed evaluation unchanged
-and reporting an honest failure to improve 0.57 would be a better artefact than
-another feature. Everything else on this page is either scale work nobody can
-evaluate from a repository, or decoration.
+**On the shifted family it did not replicate:** +0.006, CI [+0.000, +0.021],
+spanning zero. The nominal gain was mostly a threshold fitted to the family it
+was measured on. Details and the two findings that did survive are in
+[ADR 0012](adr/0012-probabilistic-conflict-detection.md).
 
-If it lands, one visualisation earns its place alongside it: **1-sigma
-uncertainty ellipses on the display**, because they make the argument visible
-rather than theoretical. Not otherwise.
+So the deterministic detector remains the default, the probabilistic one ships
+as an option nobody is told to turn on, and **precision 0.57 remains the weakest
+number in the repository with its cause now genuinely unknown.** The obvious
+explanation was tested and is not sufficient.
+
+**What this changes about what to do next.** Not "tune the threshold" — that is
+the move this result argues against. The useful next step is to stop guessing at
+the cause and characterise the false alerts directly: cluster the 29 by geometry,
+lookahead, and manoeuvre state and find out what they actually have in common.
+That is a day of analysis rather than a feature, and it is now better motivated
+than any of it was before.
+
+The visualisation this section used to promise — **1-sigma uncertainty ellipses
+on the display** — was conditional on the detector landing. It did not land, so
+they are not built. Drawing uncertainty that the detector is not permitted to
+act on would be decoration arguing for a conclusion the evidence declined.
 
 ---
 
