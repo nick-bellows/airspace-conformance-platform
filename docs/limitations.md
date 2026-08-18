@@ -340,7 +340,12 @@ them, and what is deliberately declined, is in [`future-work.md`](future-work.md
 
 | Claim | Evidence | Caveat |
 | --- | --- | --- |
-| Conflict detection recall, precision, lead time | `eval/results/conflict_detection.md` | Synthetic traffic; unrealistic encounter rate |
+| Conflict detection recall, precision, lead time | `eval/results/conflict_detection.md` | Synthetic traffic; unrealistic encounter rate; **one point on the lookahead curve** |
+| Precision is largely a function of lookahead | `eval/results/lookahead_tradeoff.md` | Replicates on both families; default deliberately unchanged |
+| False alerts are mostly genuine near-misses | `eval/results/false_alert_analysis.json` | Nominal family; descriptive, no fix proposed |
+| Probabilistic detection does not beat the baseline | `eval/results/detector_comparison{,_shifted}.md` | Threshold chosen on nominal, invalidated on shifted |
+| Recall is robust to manoeuvre density | `eval/results/manoeuvre_sensitivity.md` | 27–44 events per row; populations differ between rows |
+| Conformance monitoring recall by manoeuvre type | `eval/results/conformance_detection.md` | Truth is simulator intent; shifted family is the headline |
 | Trajectory model halves turning error | `eval/results/trajectory_prediction.md` | Turning stratum only; aircraft fly exactly |
 | Skill survives distribution shift | Same report, `test_shifted` split | One shifted family, not a sweep |
 | The model degrades to physics on failure | `tests/unit/test_ml.py`, `degradation` CI job | Covers missing, corrupt, NaN, and raising models |

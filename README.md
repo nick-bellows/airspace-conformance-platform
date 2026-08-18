@@ -217,7 +217,7 @@ real prediction error is substantially larger than anything reported here.
 
 At **500 aircraft** reporting at 1 Hz, one full cycle — every report through the
 Kalman filter plus one conflict scan of the whole picture — takes a **median of
-204 ms and a p95 of 251 ms** against a 500 ms budget and a 1000 s report
+204 ms and a p95 of 251 ms** against a 500 ms budget and a 1000 ms report
 interval. Roughly four times the headroom needed to keep up with real time.
 [`docs/latency-budget.md`](docs/latency-budget.md) states what is measured
 (the compute path) and what is not (Kafka, Postgres, Redis — their latency
@@ -235,7 +235,7 @@ belongs to the deployment).
 | k8s | Whether a pod actually starts under the security context it declares | CI, `kind` |
 | perf | Whether it keeps up at realistic load | CI, informational |
 
-The fast gate has **no coverage exclusions** and reports 81% over 544 tests. The
+The fast gate has **no coverage exclusions** and reports 82% over 707 tests. The
 two pure I/O adapters are measured separately by the integration job against
 their own floor, which is what turned an earlier promise ("these will be covered
 later") into something enforced.
