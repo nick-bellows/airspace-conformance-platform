@@ -248,10 +248,13 @@ manifests to a real `kind` cluster and scales the tracker to two replicas, and
 and found five more defects — [the M6 walkthrough](m6-narrative.md#and-then-the-pipeline-ran)
 has the table.
 
-**Does not prove.** The GHCR package is published but not public, so `docker
-pull` works for the owner and nobody else; the quickstart therefore builds
-locally rather than pulling. No cluster outside CI has ever run these manifests,
-and `kind` on a two-core runner is not evidence about a real one.
+**The image is public and pullable**, verified anonymously rather than assumed:
+signed out of the registry, `docker pull ghcr.io/nick-bellows/airspace-conformance-platform:latest`
+succeeds, and the pulled image runs under the same restrictive context the
+Kubernetes manifests declare (`--read-only --user 1001 --cap-drop ALL`).
+
+**Does not prove.** No cluster outside CI has ever run these manifests, and
+`kind` on a two-core runner is not evidence about a real one.
 
 **Does not prove — by design.** Nothing alerts. Traces are sampled at 100%.
 Infrastructure runs on ephemeral storage. There is no Ingress, NetworkPolicy,

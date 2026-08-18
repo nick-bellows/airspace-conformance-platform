@@ -288,6 +288,17 @@ the most interesting defect in the repository. Longer:
 
 ## Quick start
 
+The published image needs no clone and no build:
+
+```bash
+docker pull ghcr.io/nick-bellows/airspace-conformance-platform:latest
+docker run --rm ghcr.io/nick-bellows/airspace-conformance-platform:latest acp-feed --help
+```
+
+It runs under the same restrictive context the Kubernetes manifests declare —
+`--read-only --user 1001 --cap-drop ALL` — which is a claim worth checking
+rather than believing.
+
 Run the whole thing (Docker required):
 
 ```powershell
