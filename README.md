@@ -113,18 +113,62 @@ thresholds a point estimate: a predicted 4.9 NM miss alerts, 5.1 NM does not, an
 the velocity estimate behind that prediction carries enough noise to move the
 answer across the line.
 
-That was the diagnosis, so the fix was built: a probabilistic detector that uses
-the covariance the filter already maintains and alerts on the probability of a
-breach rather than on the side of a line. **It did not work.** It wins on the
-family it was tuned against and the advantage vanishes on shifted traffic —
-+0.006 precision, confidence interval spanning zero. The deterministic detector
-is still the default and the cause of 0.57 is now genuinely unknown, the obvious
-explanation having been tested and found insufficient.
-[`detector_comparison.md`](eval/results/detector_comparison.md) has both tables;
-[ADR 0012](docs/adr/0012-probabilistic-conflict-detection.md) has the reasoning.
+That was the diagnosis for four milestones. It was wrong, and finding out took
+two goes.
+
+First the principled fix was built — a probabilistic detector using the
+covariance the filter already maintains, alerting on P(breach) rather than on
+which side of a line the mean landed. **It did not work:** it wins on the family
+it was tuned against and the advantage vanishes on shifted traffic (+0.006,
+confidence interval spanning zero).
+[ADR 0012](docs/adr/0012-probabilistic-conflict-detection.md).
+
+So the alerts were examined instead of theorised about. **The median "false"
+alert is a pair that genuinely closed to 5.52 NM** against a 5 NM standard, at a
+predicted time-to-closest-approach of 296 s against a 300 s ceiling; two-thirds
+of them involve pairs that truly came within two standards. They are not errors,
+they are the cost of extrapolating constant velocity for five minutes:
+
+| Lookahead | Precision (nominal) | Precision (shifted) | Median lead |
+| --- | --- | --- | --- |
+| 300 s ←default | 0.57 | 0.40 | 249 s |
+| 180 s | 0.72 | 0.55 | 180 s |
+| 120 s | 0.87 | 0.65 | 120 s |
+
+**Precision 0.57 is mostly the price of a five-minute lookahead**, and unlike
+the probabilistic result this replicates on both families. The default is
+unchanged — lead time is the product, and on shifted traffic the shorter window
+also costs recall. What was actually wrong was quoting a precision figure
+without the lookahead it was measured at.
+[`lookahead_tradeoff.md`](eval/results/lookahead_tradeoff.md) has the full curve.
 
 **Recall of 1.00 is also weaker than it looks** — the generated encounters are mostly constant-velocity approaches, which
 is exactly the assumption the detector makes.
+
+### Conformance monitoring
+
+The project's namesake, and until now the only detector in it with no published
+numbers. Scored against the simulator's flight plan — turns, climbs and speed
+changes at known times that no part of the pipeline observes.
+[Full report](eval/results/conformance_detection.md).
+
+| Manoeuvre | Count (shifted family) | Recall |
+| --- | --- | --- |
+| Turns | 726 | 0.42 |
+| Speed changes | 338 | 0.02 |
+| Climbs | 568 | **0.01** |
+| **Overall** | **1,632** | **0.20** |
+
+**It is a turn detector.** The monitor thresholds the *horizontal* distance
+between where an aircraft was predicted to be and where it is — and a climb
+barely moves an aircraft horizontally, so it is blind to vertical manoeuvres by
+construction. Nothing in the system compares predicted altitude against observed
+altitude.
+
+Precision is **1.00** across both families: every advisory it raised
+corresponded to a real manoeuvre. That is not the compliment it sounds like at
+recall 0.20 — it fires only on manoeuvres too large to miss. Median lag to
+notice a turn is 49.6 s, bounded by the 60 s prediction horizon.
 
 ### Trajectory prediction
 

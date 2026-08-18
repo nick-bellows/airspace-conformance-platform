@@ -80,12 +80,22 @@ only visible to someone who opens the report:
   never actually loses separation. The cause is thresholding a point estimate: a
   predicted 4.9 NM miss alerts and a 5.1 NM miss does not, while the velocity
   estimate behind that prediction carries enough noise to move the answer across
-  the line. **That explanation has now been tested and is not sufficient.** A
-  probabilistic detector using the filter's covariance gains +0.036 precision on
-  the nominal family and +0.006 — confidence interval spanning zero — on shifted
-  traffic it was not tuned against. The cause of 0.57 is therefore unknown, which
-  is a weaker position than this section held before and an honest one.
-  [ADR 0012](adr/0012-probabilistic-conflict-detection.md).
+  the line. **That explanation was tested and is not sufficient** — a
+  probabilistic detector using the filter's covariance gains +0.006 precision,
+  confidence interval spanning zero, on traffic it was not tuned against
+  ([ADR 0012](adr/0012-probabilistic-conflict-detection.md)).
+- **Precision without a lookahead attached is not a property of the system.**
+  Examining the alerts rather than theorising about them found the median false
+  alert is a pair that genuinely closed to 5.52 NM against a 5 NM standard, at a
+  predicted time-to-CPA of 296 s against a 300 s ceiling. Shortening the
+  lookahead to 120 s takes precision to 0.87 nominal and 0.65 shifted. The 0.57
+  headline is one point on a curve, published in
+  [`lookahead_tradeoff.md`](../eval/results/lookahead_tradeoff.md), and quoting
+  it alone was the actual reporting defect.
+- **The shorter lookahead is not a free win, which is why the default stands.**
+  On shifted traffic a 120 s window misses a loss of separation that the 300 s
+  window catches, and halves the median warning. Lead time is what the system is
+  for.
 - **The probabilistic detector's covariance model is isotropic.** It treats each
   track's horizontal uncertainty as circular when the filter's is mildly
   elliptical, and does not propagate turn rate, so a turning aircraft's future
@@ -162,9 +172,25 @@ From `eval/results/trajectory_prediction.md` and the
 
 ### Conformance monitoring
 
-- **The threshold factor has never been swept.** 3.0 is a judgement call, and
-  there is no precision/recall curve for non-conformance alerts. The
-  conflict detector has one; this does not, and that asymmetry is a gap.
+- **It is a turn detector, not a conformance monitor.** Measured against the
+  simulator's flight plan across 1,632 manoeuvres on shifted traffic, it finds
+  **42% of turns, 2.4% of speed changes, and 1.2% of climbs** — overall recall
+  0.196. The mechanism is structural: the monitor thresholds the *horizontal*
+  distance between predicted and observed position, and a climb barely moves an
+  aircraft horizontally, so nothing in the system compares predicted altitude
+  against observed altitude. [`conformance_detection.md`](../eval/results/conformance_detection.md).
+- **Its precision is 1.00, which is not the compliment it sounds like.** Across
+  both families every advisory raised corresponded to a real manoeuvre and there
+  were no unattributed advisories at all. A detector at recall 0.20 and
+  precision 1.00 has a very conservative threshold: it fires only on manoeuvres
+  too large to miss. The lifecycle was checked as a possible cause of the low
+  recall and ruled out — later manoeuvres score *higher* than first ones.
+- **The threshold factor has never been swept.** 3.0 is a judgement call. There
+  is now a recall/precision measurement to sweep it against, which there was not
+  before, but the sweep itself is unbuilt.
+- **Median lag to notice a turn is 49.6 s**, p90 60.3 s — bounded by the 60 s
+  prediction horizon, since a manoeuvre cannot surface until a prediction made
+  before it matures. That is inherent to the design, not a tuning failure.
 - **Thresholds are global constants per horizon, not per-prediction
   uncertainty.** They are calibrated to the *typical* turning error, so they are
   loose exactly where prediction is hardest and tight where it is easy. The

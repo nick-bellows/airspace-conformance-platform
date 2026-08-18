@@ -1,0 +1,89 @@
+{
+  "meta": {
+    "generated_at": "2026-08-18T00:14:09.390755+00:00",
+    "seed": 20260815,
+    "scenarios": 120,
+    "attribution_window_s": 240.0,
+    "generator_version": "acp-gen-v1"
+  },
+  "families": {
+    "shifted": {
+      "scenarios": 120,
+      "simulated_hours": 30.0,
+      "manoeuvres": 1632,
+      "detected_manoeuvres": 320,
+      "recall": 0.1961,
+      "recall_first_manoeuvre_per_aircraft": 0.1471,
+      "recall_subsequent_manoeuvres": 0.2451,
+      "first_manoeuvres": 816,
+      "subsequent_manoeuvres": 816,
+      "advisories_raised": 377,
+      "unattributed_advisories": 0,
+      "precision": 1.0,
+      "unattributed_per_hour": 0.0,
+      "lag_s": {
+        "count": 320,
+        "median": 49.6,
+        "p10": 36.8,
+        "p90": 60.3,
+        "max": 66.1
+      },
+      "by_manoeuvre_kind": {
+        "ChangeSpeed": {
+          "manoeuvres": 338,
+          "detected": 8,
+          "recall": 0.0237
+        },
+        "ClimbTo": {
+          "manoeuvres": 568,
+          "detected": 7,
+          "recall": 0.0123
+        },
+        "TurnTo": {
+          "manoeuvres": 726,
+          "detected": 305,
+          "recall": 0.4201
+        }
+      }
+    },
+    "nominal": {
+      "scenarios": 123,
+      "simulated_hours": 20.75,
+      "manoeuvres": 94,
+      "detected_manoeuvres": 22,
+      "recall": 0.234,
+      "recall_first_manoeuvre_per_aircraft": 0.2283,
+      "recall_subsequent_manoeuvres": 0.5,
+      "first_manoeuvres": 92,
+      "subsequent_manoeuvres": 2,
+      "advisories_raised": 22,
+      "unattributed_advisories": 0,
+      "precision": 1.0,
+      "unattributed_per_hour": 0.0,
+      "lag_s": {
+        "count": 22,
+        "median": 47.4,
+        "p10": 38.0,
+        "p90": 54.0,
+        "max": 57.5
+      },
+      "by_manoeuvre_kind": {
+        "ChangeSpeed": {
+          "manoeuvres": 22,
+          "detected": 0,
+          "recall": 0.0
+        },
+        "ClimbTo": {
+          "manoeuvres": 27,
+          "detected": 0,
+          "recall": 0.0
+        },
+        "TurnTo": {
+          "manoeuvres": 45,
+          "detected": 22,
+          "recall": 0.4889
+        }
+      }
+    }
+  }
+}

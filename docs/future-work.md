@@ -39,12 +39,23 @@ as an option nobody is told to turn on, and **precision 0.57 remains the weakest
 number in the repository with its cause now genuinely unknown.** The obvious
 explanation was tested and is not sufficient.
 
-**What this changes about what to do next.** Not "tune the threshold" — that is
-the move this result argues against. The useful next step is to stop guessing at
-the cause and characterise the false alerts directly: cluster the 29 by geometry,
-lookahead, and manoeuvre state and find out what they actually have in common.
-That is a day of analysis rather than a feature, and it is now better motivated
-than any of it was before.
+**What this changed about what to do next — and it has since been done.** Not
+"tune the threshold", which is the move that result argues against, but
+characterise the false alerts directly.
+[`analyse_false_alerts.py`](../eval/analyse_false_alerts.py) did, and found the
+median one is a pair that truly closed to 5.52 NM at a predicted time-to-CPA of
+296 s against a 300 s ceiling. The follow-up sweep in
+[`lookahead_tradeoff.md`](../eval/results/lookahead_tradeoff.md) shows precision
+is largely a function of the lookahead, replicating on both families. That is
+now the published framing; see [ADR 0013](adr/0013-lookahead-is-an-operating-point.md).
+
+The analysis left one thread genuinely open: **8 of the 29 false alerts involve
+pairs that breached the lateral standard for real and were vertically clear at
+closest approach.** Those are vertical prediction errors rather than lookahead
+cost, and nothing here explains them. Constant vertical rate over five minutes
+is the obvious suspect — an aircraft that levels off mid-climb will be predicted
+straight through a flight level it never reaches — but that is a hypothesis, and
+the lesson of ADR 0012 is not to write hypotheses down as causes.
 
 The visualisation this section used to promise — **1-sigma uncertainty ellipses
 on the display** — was conditional on the detector landing. It did not land, so

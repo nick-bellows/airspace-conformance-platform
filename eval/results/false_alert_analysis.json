@@ -1,0 +1,402 @@
+{
+  "summary": {
+    "alerts": 68,
+    "true_alerts": 39,
+    "false_alerts": 29,
+    "false_alert_true_min_horizontal_nm": {
+      "count": 29,
+      "median": 5.52,
+      "p10": 1.7,
+      "p90": 24.51,
+      "min": 0.66,
+      "max": 25.96
+    },
+    "false_alert_predicted_horizontal_nm": {
+      "count": 29,
+      "median": 4.75,
+      "p10": 1.56,
+      "p90": 4.99,
+      "min": 0.44,
+      "max": 5.0
+    },
+    "false_alert_horizontal_error_nm": {
+      "count": 29,
+      "median": 0.92,
+      "p10": -0.18,
+      "p90": 20.51,
+      "min": -2.03,
+      "max": 21.01
+    },
+    "false_alert_time_to_cpa_s": {
+      "count": 29,
+      "median": 296.45,
+      "p10": 221.11,
+      "p90": 300.0,
+      "min": 0.0,
+      "max": 300.0
+    },
+    "true_alert_horizontal_error_nm": {
+      "count": 39,
+      "median": -0.19,
+      "p10": -4.34,
+      "p90": 0.39,
+      "min": -4.91,
+      "max": 1.65
+    },
+    "false_alerts_within_two_standards": 19,
+    "false_alerts_breaching_laterally_but_not_vertically": 8,
+    "family": "nominal",
+    "seed": 20260815,
+    "generated_at": "2026-08-17T23:43:39.515392+00:00"
+  },
+  "false_alerts": [
+    {
+      "scenario_id": "gen-nominal-enc-0001",
+      "pair": [
+        "7dd9a1",
+        "f8f3c6"
+      ],
+      "predicted_horizontal_nm": 4.993,
+      "predicted_vertical_ft": 839.2,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 5.04,
+      "true_vertical_at_closest_ft": 886.6
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0005",
+      "pair": [
+        "1eb320",
+        "6c67ac"
+      ],
+      "predicted_horizontal_nm": 0.441,
+      "predicted_vertical_ft": 963.5,
+      "time_to_cpa_s": 278.6,
+      "true_min_horizontal_nm": 20.04,
+      "true_vertical_at_closest_ft": 964.6
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0010",
+      "pair": [
+        "83eb2c",
+        "d458e9"
+      ],
+      "predicted_horizontal_nm": 0.837,
+      "predicted_vertical_ft": 970.4,
+      "time_to_cpa_s": 296.4,
+      "true_min_horizontal_nm": 0.656,
+      "true_vertical_at_closest_ft": 1082.1
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0011",
+      "pair": [
+        "1de627",
+        "f1aedf"
+      ],
+      "predicted_horizontal_nm": 4.994,
+      "predicted_vertical_ft": 472.1,
+      "time_to_cpa_s": 238.3,
+      "true_min_horizontal_nm": 2.964,
+      "true_vertical_at_closest_ft": 1566.9
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0014",
+      "pair": [
+        "b2b8b0",
+        "fbe759"
+      ],
+      "predicted_horizontal_nm": 4.895,
+      "predicted_vertical_ft": 220.0,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 5.317,
+      "true_vertical_at_closest_ft": 262.4
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0016",
+      "pair": [
+        "480cd8",
+        "c0c6b3"
+      ],
+      "predicted_horizontal_nm": 4.776,
+      "predicted_vertical_ft": 101.1,
+      "time_to_cpa_s": 298.2,
+      "true_min_horizontal_nm": 25.313,
+      "true_vertical_at_closest_ft": 94.4
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0022",
+      "pair": [
+        "aefdb6",
+        "d3a47b"
+      ],
+      "predicted_horizontal_nm": 1.557,
+      "predicted_vertical_ft": 984.3,
+      "time_to_cpa_s": 209.1,
+      "true_min_horizontal_nm": 1.559,
+      "true_vertical_at_closest_ft": 1018.9
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0024",
+      "pair": [
+        "a98614",
+        "c4d255"
+      ],
+      "predicted_horizontal_nm": 4.937,
+      "predicted_vertical_ft": 992.2,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 13.803,
+      "true_vertical_at_closest_ft": 984.4
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0027",
+      "pair": [
+        "c77664",
+        "eb1ff4"
+      ],
+      "predicted_horizontal_nm": 2.35,
+      "predicted_vertical_ft": 962.0,
+      "time_to_cpa_s": 233.1,
+      "true_min_horizontal_nm": 8.024,
+      "true_vertical_at_closest_ft": 995.9
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0028",
+      "pair": [
+        "7448ca",
+        "d6c395"
+      ],
+      "predicted_horizontal_nm": 4.985,
+      "predicted_vertical_ft": 840.4,
+      "time_to_cpa_s": 260.6,
+      "true_min_horizontal_nm": 5.321,
+      "true_vertical_at_closest_ft": 879.6
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0029",
+      "pair": [
+        "4ded13",
+        "50d83d"
+      ],
+      "predicted_horizontal_nm": 4.981,
+      "predicted_vertical_ft": 338.1,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 11.495,
+      "true_vertical_at_closest_ft": 361.5
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0030",
+      "pair": [
+        "15b47f",
+        "b21a9c"
+      ],
+      "predicted_horizontal_nm": 4.955,
+      "predicted_vertical_ft": 730.0,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 5.035,
+      "true_vertical_at_closest_ft": 1735.9
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0031",
+      "pair": [
+        "11b5d8",
+        "2c0d1d"
+      ],
+      "predicted_horizontal_nm": 2.848,
+      "predicted_vertical_ft": 413.0,
+      "time_to_cpa_s": 294.3,
+      "true_min_horizontal_nm": 3.098,
+      "true_vertical_at_closest_ft": 1583.3
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0047",
+      "pair": [
+        "ceaa05",
+        "e5888f"
+      ],
+      "predicted_horizontal_nm": 4.0,
+      "predicted_vertical_ft": 688.2,
+      "time_to_cpa_s": 287.0,
+      "true_min_horizontal_nm": 24.508,
+      "true_vertical_at_closest_ft": 656.8
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0051",
+      "pair": [
+        "a5e7de",
+        "d59883"
+      ],
+      "predicted_horizontal_nm": 3.867,
+      "predicted_vertical_ft": 901.4,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 19.415,
+      "true_vertical_at_closest_ft": 900.4
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0053",
+      "pair": [
+        "0b0a1b",
+        "cb99bd"
+      ],
+      "predicted_horizontal_nm": 4.942,
+      "predicted_vertical_ft": 71.2,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 25.956,
+      "true_vertical_at_closest_ft": 25.0
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0054",
+      "pair": [
+        "63fd9a",
+        "d796b4"
+      ],
+      "predicted_horizontal_nm": 4.602,
+      "predicted_vertical_ft": 784.9,
+      "time_to_cpa_s": 277.8,
+      "true_min_horizontal_nm": 5.519,
+      "true_vertical_at_closest_ft": 792.7
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0055",
+      "pair": [
+        "8df882",
+        "d32508"
+      ],
+      "predicted_horizontal_nm": 4.961,
+      "predicted_vertical_ft": 505.2,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 17.834,
+      "true_vertical_at_closest_ft": 508.2
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0056",
+      "pair": [
+        "0692cf",
+        "7d0220"
+      ],
+      "predicted_horizontal_nm": 4.964,
+      "predicted_vertical_ft": 985.3,
+      "time_to_cpa_s": 260.0,
+      "true_min_horizontal_nm": 6.188,
+      "true_vertical_at_closest_ft": 1050.2
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0058",
+      "pair": [
+        "0d0c3b",
+        "ab7048"
+      ],
+      "predicted_horizontal_nm": 4.852,
+      "predicted_vertical_ft": 645.8,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 24.178,
+      "true_vertical_at_closest_ft": 1263.7
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0059",
+      "pair": [
+        "39214b",
+        "43e3ea"
+      ],
+      "predicted_horizontal_nm": 4.734,
+      "predicted_vertical_ft": 601.2,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 14.646,
+      "true_vertical_at_closest_ft": 546.4
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0066",
+      "pair": [
+        "225b63",
+        "fe8d4a"
+      ],
+      "predicted_horizontal_nm": 5.0,
+      "predicted_vertical_ft": 990.8,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 5.978,
+      "true_vertical_at_closest_ft": 1000.0
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0082",
+      "pair": [
+        "b39d3d",
+        "b8d51f"
+      ],
+      "predicted_horizontal_nm": 4.744,
+      "predicted_vertical_ft": 982.1,
+      "time_to_cpa_s": 270.3,
+      "true_min_horizontal_nm": 5.096,
+      "true_vertical_at_closest_ft": 956.7
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0095",
+      "pair": [
+        "56aef9",
+        "f7f844"
+      ],
+      "predicted_horizontal_nm": 4.058,
+      "predicted_vertical_ft": 998.3,
+      "time_to_cpa_s": 0.0,
+      "true_min_horizontal_nm": 3.258,
+      "true_vertical_at_closest_ft": 1000.0
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0095",
+      "pair": [
+        "055f6f",
+        "19824b"
+      ],
+      "predicted_horizontal_nm": 4.753,
+      "predicted_vertical_ft": 411.7,
+      "time_to_cpa_s": 299.5,
+      "true_min_horizontal_nm": 8.102,
+      "true_vertical_at_closest_ft": 457.0
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0100",
+      "pair": [
+        "68502d",
+        "d1da0e"
+      ],
+      "predicted_horizontal_nm": 4.675,
+      "predicted_vertical_ft": 949.5,
+      "time_to_cpa_s": 221.1,
+      "true_min_horizontal_nm": 4.825,
+      "true_vertical_at_closest_ft": 1405.8
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0113",
+      "pair": [
+        "375ed2",
+        "9c02ff"
+      ],
+      "predicted_horizontal_nm": 1.627,
+      "predicted_vertical_ft": 977.6,
+      "time_to_cpa_s": 253.3,
+      "true_min_horizontal_nm": 1.703,
+      "true_vertical_at_closest_ft": 2073.5
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0116",
+      "pair": [
+        "794b26",
+        "f40aae"
+      ],
+      "predicted_horizontal_nm": 4.859,
+      "predicted_vertical_ft": 328.9,
+      "time_to_cpa_s": 300.0,
+      "true_min_horizontal_nm": 5.346,
+      "true_vertical_at_closest_ft": 1337.3
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0118",
+      "pair": [
+        "2e38e2",
+        "6013ad"
+      ],
+      "predicted_horizontal_nm": 3.087,
+      "predicted_vertical_ft": 982.0,
+      "time_to_cpa_s": 294.3,
+      "true_min_horizontal_nm": 3.146,
+      "true_vertical_at_closest_ft": 1044.9
+    }
+  ]
+}
