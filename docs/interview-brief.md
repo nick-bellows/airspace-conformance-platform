@@ -103,6 +103,10 @@ flag rather than a boast.
 > catches every real loss of separation with a median of four minutes' warning —
 > and its precision is 0.57, which isn't good enough, and the README says so
 > above the good numbers.
+>
+> The repository also contains three things I believed, wrote down, and then
+> measured and found were wrong. Those corrections are still in it, next to
+> what they replaced.
 
 If they only remember one thing, make it the last sentence.
 
@@ -185,21 +189,47 @@ design exists precisely so failure is bounded. I used one heavily to *build* it,
 which is a different question, and that's written up separately.
 
 **"Precision of 0.57 seems bad."**
-It is. I thought I knew why — the detector thresholds a point estimate, and a
-predicted 4.9 NM miss alerts while 5.1 NM doesn't. So I built the principled
-fix: a probabilistic detector using the covariance the Kalman filter already
-maintains, alerting on the probability of a breach instead. On the family I
-tuned it against it won, +0.036 precision, confidence interval excluding zero.
-On shifted traffic it was +0.006 with the interval spanning zero. It didn't
-replicate, so the deterministic detector is still the default and I now don't
-know what causes 0.57. That's the most useful thing I did to this project.
+It is, and the story of finding out why is the thing I'd most want to be asked
+about. I thought I knew: the detector thresholds a point estimate, so a
+predicted 4.9 NM miss alerts and 5.1 NM doesn't. I built the principled fix — a
+probabilistic detector using the Kalman covariance, alerting on P(breach). It
+won on the family I tuned it against, +0.036 precision with the interval
+excluding zero, and vanished on shifted traffic: +0.006, interval spanning zero.
+
+So I stopped guessing and looked at the alerts. The median "false" alert is a
+pair that genuinely closed to 5.52 NM against a 5 NM standard, raised at 296
+seconds against a 300-second ceiling. They're not errors, they're the cost of
+extrapolating constant velocity for five minutes. Halve the lookahead and
+precision goes to 0.87 — and that one replicates on both families. So 0.57 is
+an operating point, not a defect, and the real bug was quoting it without the
+lookahead attached.
 
 **"Isn't building something that didn't work a waste?"**
-The alternative was leaving a confident guess in the documentation. It said the
-cause was point-estimate thresholding; that was testable, I tested it, and it's
-insufficient. The repository is more honest than it was and the next step is
-better targeted — characterise the 29 false alerts directly instead of
-theorising. I'd rather show that than a feature that shipped on a hunch.
+It's what pointed at the right answer. The failed fix is what made me stop
+theorising and go measure the population, and that's where the actual
+explanation was. Two negative results in this repo did more than the features
+would have: the probabilistic detector, and a control aircraft in the demo
+scenario that turned out to be positioned so it controlled nothing.
+
+**"Has measuring something ever changed your mind about your own project?"**
+Three times, and they're all in the repo. The probabilistic detector was
+supposed to fix precision and didn't. A demo scenario's altitude control was
+inert for the whole project's life — I found it by deleting the logic it
+guarded and watching nothing fail. And the README claimed for four milestones
+that recall 1.00 was flattered by constant-velocity traffic; I swept manoeuvre
+density and recall didn't move at all — it's actually lowest when nothing
+manoeuvres. What manoeuvres cost is precision. Each of those corrections is
+still written down next to what it replaced.
+
+**"What's the conformance monitoring like?"**
+Honestly? It's a turn detector. The project is named after it and it was the
+last thing in here with no published numbers, so I measured it against the
+simulator's flight plan: 42% of turns, 2% of speed changes, 1% of climbs. The
+mechanism is obvious once you look — it thresholds *horizontal* distance
+between predicted and actual position, and a climb barely moves an aircraft
+horizontally. Nothing compares predicted altitude to observed altitude. Its
+precision is 1.00 across 377 advisories, which sounds good until you notice
+that at recall 0.20 it just means the threshold is very conservative.
 
 ### On the engineering
 

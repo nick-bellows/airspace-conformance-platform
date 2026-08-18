@@ -101,11 +101,23 @@ only visible to someone who opens the report:
   elliptical, and does not propagate turn rate, so a turning aircraft's future
   position is more uncertain than the model says. Neither error is quantified.
   Given the detector is not the default, they are recorded rather than fixed.
-- **Recall is high partly because the test is easy.** The generated encounters
-  are mostly constant-velocity approaches, which is exactly the assumption the
-  detector makes. Conflicts created by a late, unforecast turn are
-  under-represented in the scenario set. Recall against those would be worse and
-  is currently unmeasured.
+- **"Recall is high because the test is easy" was written here for four
+  milestones and is not supported.** The claim was that constant-velocity
+  encounters flatter a constant-velocity detector, so recall would fall on
+  manoeuvring traffic. Sweeping manoeuvre density with every other parameter
+  held fixed, recall stays at 1.00 and is *lowest* (0.977) with no manoeuvres at
+  all. The detector re-evaluates every second against a five-minute horizon, so
+  it only has to observe a turn, not forecast it, and it gets many chances per
+  encounter. [`manoeuvre_sensitivity.md`](../eval/results/manoeuvre_sensitivity.md).
+- **What manoeuvring traffic does cost is precision** — 0.78 with no manoeuvres
+  down to 0.39 with every staged aircraft manoeuvring — and lead time, 276 s
+  down to 211 s. Together with the lookahead sweep this is one effect seen
+  twice: precision tracks how much constant-velocity error accumulates before
+  closest approach, whether that comes from extrapolating further or from
+  traffic that extrapolates worse.
+- **Recall remains a small-sample figure.** 27 to 44 real events per
+  configuration, so one detection either way moves it by two to four points. It
+  is not measured precisely enough to distinguish 1.00 from 0.97.
 - **The tracking filter is constant-velocity**, so it lags during turns. That is
   deliberate ([ADR 0006](adr/0006-constant-velocity-filter.md)) because the lag
   is the manoeuvre signal, but it does mean reported position is least accurate

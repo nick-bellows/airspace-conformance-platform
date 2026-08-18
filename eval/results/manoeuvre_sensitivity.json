@@ -1,0 +1,55 @@
+{
+  "meta": {
+    "generated_at": "2026-08-18T00:24:42.893193+00:00",
+    "seed": 20260815,
+    "scenarios": 120,
+    "generator_version": "acp-gen-v1",
+    "detector_version": "acp-separation-v1"
+  },
+  "rows": [
+    {
+      "manoeuvre_probability": 0.0,
+      "recall": 0.9773,
+      "precision": 0.7818,
+      "truth_conflict_events": 44,
+      "detected_events": 43,
+      "missed_events": 1,
+      "alerts_raised": 55,
+      "false_alerts": 12,
+      "median_lead_time_s": 276.0
+    },
+    {
+      "manoeuvre_probability": 0.35,
+      "recall": 1.0,
+      "precision": 0.5672,
+      "truth_conflict_events": 38,
+      "detected_events": 38,
+      "missed_events": 0,
+      "alerts_raised": 67,
+      "false_alerts": 29,
+      "median_lead_time_s": 244.5
+    },
+    {
+      "manoeuvre_probability": 0.7,
+      "recall": 1.0,
+      "precision": 0.589,
+      "truth_conflict_events": 43,
+      "detected_events": 43,
+      "missed_events": 0,
+      "alerts_raised": 73,
+      "false_alerts": 30,
+      "median_lead_time_s": 221.0
+    },
+    {
+      "manoeuvre_probability": 1.0,
+      "recall": 1.0,
+      "precision": 0.3857,
+      "truth_conflict_events": 27,
+      "detected_events": 27,
+      "missed_events": 0,
+      "alerts_raised": 70,
+      "false_alerts": 43,
+      "median_lead_time_s": 211.0
+    }
+  ]
+}

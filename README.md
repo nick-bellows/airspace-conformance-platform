@@ -142,8 +142,18 @@ also costs recall. What was actually wrong was quoting a precision figure
 without the lookahead it was measured at.
 [`lookahead_tradeoff.md`](eval/results/lookahead_tradeoff.md) has the full curve.
 
-**Recall of 1.00 is also weaker than it looks** — the generated encounters are mostly constant-velocity approaches, which
-is exactly the assumption the detector makes.
+**This README used to claim recall 1.00 was flattered by constant-velocity
+traffic. That was an argument, and measuring it showed it was wrong.** Sweeping
+manoeuvre density with everything else held fixed, recall stays at 1.00 and is
+in fact *lowest* (0.977) when nothing manoeuvres at all — the detector
+re-evaluates every second against a five-minute horizon, so a turn only has to
+be observed, not predicted. What manoeuvres actually cost is precision, which
+falls from 0.78 to 0.39 as every staged aircraft starts manoeuvring.
+[`manoeuvre_sensitivity.md`](eval/results/manoeuvre_sensitivity.md).
+
+Both sweeps land on the same thing: **precision tracks accumulated
+constant-velocity error — from a longer lookahead or from less predictable
+traffic — and recall does not.**
 
 ### Conformance monitoring
 
