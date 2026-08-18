@@ -44,6 +44,25 @@ RUN python -m venv /opt/venv \
 
 FROM python:3.13-slim AS runtime
 
+# Patch the OS packages the base image ships stale.
+#
+# Not a hardening gesture: on 2026-08-18 the `security` job went red on
+# CVE-2026-53615 (HIGH, integer overflow in libblkid's DOS partition parser),
+# present in nine util-linux packages at 1:2.41-5 while Debian had already
+# published 2.41.5-0+deb13u1. `python:3.13-slim` is a floating tag and it still
+# lagged the security archive, so pulling a fresh base did not help.
+#
+# The trade this makes is real and worth naming: `upgrade` means two builds of
+# the same commit can produce different images, which is exactly the kind of
+# thing this repository otherwise refuses. The alternative -- pin the base by
+# digest and bump it by hand -- makes builds reproducible and makes the project
+# silently vulnerable between bumps, which for an image nobody is on call for
+# is the worse failure. The scanner, not a human, is what closes that loop.
+RUN apt-get update \
+    && apt-get upgrade -y --no-install-recommends \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
 # Non-root from the start. Adding it later means discovering every place that
 # assumed write access all at once.
 RUN groupadd --system --gid 1001 acp \
