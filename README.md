@@ -32,13 +32,10 @@ monitor the services run, not a mock-up. Regenerate it with
 > Kubernetes manifests applied to a real `kind` cluster, four-tool security
 > scanning, and an image published to GHCR.
 >
-> **All thirteen CI jobs are green**, which took four attempts. The pipeline had
-> never executed until this repository got a remote, and running it found five
-> defects that a green local gate could not have shown — including a scenario
-> fingerprint that was not reproducible across operating systems, and three
-> tests that depended on a clock they did not own. Those are written up in
-> [`how-it-was-built.md`](docs/how-it-was-built.md); the ones three external
-> reviews found before that are in the same place.
+> **All thirteen CI jobs are green**, which took four attempts — the pipeline had
+> never executed until this repository got a remote, and the five defects that
+> first run exposed (plus the eighteen three external reviews found before it) are
+> in [`how-it-was-built.md`](docs/how-it-was-built.md).
 
 > **Not an air traffic control system.** Advisory output only, synthetic data
 > only, no certification of any kind. Read [`docs/safety-notes.md`](docs/safety-notes.md)
@@ -86,6 +83,8 @@ alternatives and why they lost:
 | [0009](docs/adr/0009-one-reader-fans-out-to-many-viewers.md) | One reader fans out to many viewers, so load tracks the airspace not the audience |
 | [0010](docs/adr/0010-observability-degrades-rather-than-blocks.md) | Observability degrades to no-ops rather than blocking startup — and how a trace crosses a broker |
 | [0011](docs/adr/0011-partition-ownership-is-state.md) | Partition ownership is state: a consumer that loses a partition releases its aircraft without terminating them |
+| [0012](docs/adr/0012-probabilistic-conflict-detection.md) | Probabilistic conflict detection, built alongside the deterministic one — and the measurement that says it does not win |
+| [0013](docs/adr/0013-lookahead-is-an-operating-point.md) | The lookahead is an operating point, so the precision curve gets published rather than one point on it |
 
 ## Results
 
@@ -107,27 +106,11 @@ only the noisy observation stream.
 | False alerts per airspace hour | 1.40 |
 | Median warning lead time | 249 s |
 
-**Precision of 0.57 is the honest result and it is not good enough.** Two in five
-alerts concern a pair that never actually loses separation, because the detector
-thresholds a point estimate: a predicted 4.9 NM miss alerts, 5.1 NM does not, and
-the velocity estimate behind that prediction carries enough noise to move the
-answer across the line.
-
-That was the diagnosis for four milestones. It was wrong, and finding out took
-two goes.
-
-First the principled fix was built — a probabilistic detector using the
-covariance the filter already maintains, alerting on P(breach) rather than on
-which side of a line the mean landed. **It did not work:** it wins on the family
-it was tuned against and the advantage vanishes on shifted traffic (+0.006,
-confidence interval spanning zero).
-[ADR 0012](docs/adr/0012-probabilistic-conflict-detection.md).
-
-So the alerts were examined instead of theorised about. **The median "false"
-alert is a pair that genuinely closed to 5.52 NM** against a 5 NM standard, at a
-predicted time-to-closest-approach of 296 s against a 300 s ceiling; two-thirds
-of them involve pairs that truly came within two standards. They are not errors,
-they are the cost of extrapolating constant velocity for five minutes:
+**Precision 0.57 is an operating point, not a defect** — and quoting it without
+the lookahead it was measured at was the actual reporting error. The median
+"false" alert is a pair that genuinely closed to 5.52 NM against a 5 NM standard,
+raised at 296 s against a 300 s ceiling. They are not errors; they are the cost
+of extrapolating constant velocity for five minutes.
 
 | Lookahead | Precision (nominal) | Precision (shifted) | Median lead |
 | --- | --- | --- | --- |
@@ -135,25 +118,20 @@ they are the cost of extrapolating constant velocity for five minutes:
 | 180 s | 0.72 | 0.55 | 180 s |
 | 120 s | 0.87 | 0.65 | 120 s |
 
-**Precision 0.57 is mostly the price of a five-minute lookahead**, and unlike
-the probabilistic result this replicates on both families. The default is
-unchanged — lead time is the product, and on shifted traffic the shorter window
-also costs recall. What was actually wrong was quoting a precision figure
-without the lookahead it was measured at.
-[`lookahead_tradeoff.md`](eval/results/lookahead_tradeoff.md) has the full curve.
+The default stands: lead time is the product, and on shifted traffic the shorter
+window also costs a real detection.
+[`lookahead_tradeoff.md`](eval/results/lookahead_tradeoff.md) has the curve.
 
-**This README used to claim recall 1.00 was flattered by constant-velocity
-traffic. That was an argument, and measuring it showed it was wrong.** Sweeping
-manoeuvre density with everything else held fixed, recall stays at 1.00 and is
-in fact *lowest* (0.977) when nothing manoeuvres at all — the detector
-re-evaluates every second against a five-minute horizon, so a turn only has to
-be observed, not predicted. What manoeuvres actually cost is precision, which
-falls from 0.78 to 0.39 as every staged aircraft starts manoeuvring.
-[`manoeuvre_sensitivity.md`](eval/results/manoeuvre_sensitivity.md).
-
-Both sweeps land on the same thing: **precision tracks accumulated
-constant-velocity error — from a longer lookahead or from less predictable
-traffic — and recall does not.**
+**Two things this README used to claim were tested and found wrong.** That
+precision was caused by thresholding a point estimate — the principled fix was
+built and did not replicate across scenario families
+([ADR 0012](docs/adr/0012-probabilistic-conflict-detection.md)). And that recall
+1.00 was flattered by constant-velocity traffic — sweeping manoeuvre density,
+recall is *lowest* when nothing manoeuvres at all
+([report](eval/results/manoeuvre_sensitivity.md)). Both corrections point the
+same way: **precision tracks accumulated constant-velocity error; recall does
+not**, because the detector re-evaluates every second and only has to be right
+once.
 
 ### Conformance monitoring
 
@@ -374,9 +352,9 @@ the same five checks before adding everything that needs Docker or a network:
 | `pytest` + coverage | Unit and contract tests, 80% floor |
 | `scripts/contracts.py --check` | Fails if a wire model changed without its committed schema being regenerated |
 
-Twelve jobs in all. Beyond `lint`, `types`, `unit`, and `contracts` — the four
-that mirror the local gate — CI adds `degradation`, `integration`, `e2e`,
-`perf`, `compose`, `security`, `k8s`, and `publish`.
+Thirteen jobs in all. Beyond `lint`, `types`, `unit`, and `contracts` — the four
+that mirror the local gate — CI adds `degradation`, `integration`, `e2e`, `perf`,
+`image`, `compose`, `security`, `k8s`, and `publish`.
 
 The security job asks four separate questions: bandit for the code, pip-audit
 for the dependencies that actually ship, gitleaks over the full git history, and
@@ -387,24 +365,20 @@ tests is the one ordering that matters. Full breakdown in
 
 Three of the current tests are worth singling out:
 
-- **`tests/unit/test_architecture.py`** reads the import graph out of the source
-  and fails the build if one service imports another. It has already caught a
-  real violation: during M1 the API service was written to import the tracker's
-  storage module, and the build refused it. The fix was to lift storage into its
-  own layer ([ADR 0004](docs/adr/0004-shared-read-model-between-tracker-and-api.md)).
-- **`tests/unit/test_geodesy.py`** asserts invariants with Hypothesis rather than
-  examples. It found two real defects on its first run: `normalize_bearing`
-  returning exactly `360.0` for tiny negative inputs (which would have failed
-  contract validation at runtime), and the local projection reporting ~21,000 NM
-  instead of ~12 NM for a pair straddling the antimeridian (which would have
-  hidden a conflict entirely).
-- **`tests/unit/test_deployment.py`** treats the compose file, the Kubernetes
-  manifests, the Prometheus scrape config, and the Grafana dashboard as code
-  that nothing type-checks and nothing imports — because that is what they are.
-  It fails if the dashboard queries a metric the code no longer creates, if a
-  scrape annotation names a port nothing listens on, or if a published port
-  stops binding to loopback. Those drift silently: a renamed metric leaves a
-  panel reading "No data", which looks exactly like a healthy idle system.
+- **`test_architecture.py`** reads the import graph out of the source and fails
+  if one service imports another. It caught the API service importing the
+  tracker's storage module during M1; the fix was to lift storage into its own
+  layer ([ADR 0004](docs/adr/0004-shared-read-model-between-tracker-and-api.md)).
+- **`test_geodesy.py`** asserts invariants with Hypothesis rather than examples,
+  and found two real defects on its first run: `normalize_bearing` returning
+  exactly `360.0` for tiny negative inputs, and the local projection reporting
+  ~21,000 NM instead of ~12 NM across the antimeridian — which would have hidden
+  a conflict entirely.
+- **`test_deployment.py`** treats the compose file, Kubernetes manifests,
+  Prometheus scrape config and Grafana dashboard as code that nothing
+  type-checks and nothing imports, because that is what they are. These drift
+  silently: a renamed metric leaves a panel reading "No data", which looks
+  exactly like a healthy idle system.
 
 ## Milestones
 

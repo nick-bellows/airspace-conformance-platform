@@ -83,7 +83,7 @@
   </p>
   <div class="badges">
     <a class="badge cta" href="https://github.com/nick-bellows/airspace-conformance-platform">Source on GitHub</a>
-    <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/tree/main/docs/adr">11 ADRs</a>
+    <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/tree/main/docs/adr">13 ADRs</a>
     <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/docs/limitations.md">Limitations</a>
     <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/eval/results/conflict_detection.md">Evaluation</a>
   </div>
@@ -122,18 +122,25 @@
   </p>
   <table>
     <tr><th>Metric</th><th>Value</th><th>Reading</th></tr>
-    <tr><td>Recall</td><td class="num good">1.00</td><td class="note">Every real loss of separation was alerted before it happened &mdash; on encounters that are mostly constant-velocity, which is exactly what the detector assumes</td></tr>
+    <tr><td>Recall</td><td class="num good">1.00</td><td class="note">Every real loss of separation was alerted before it happened. Sweeping manoeuvre density, recall holds &mdash; and is <em>lowest</em> when nothing manoeuvres at all</td></tr>
     <tr><td>Precision</td><td class="num warn">0.57</td><td class="note">Two in five alerts concern a pair that never loses separation. Not good enough, and the reason is known</td></tr>
     <tr><td>Median warning</td><td class="num">249 s</td><td class="note">Just over four minutes of lead time</td></tr>
     <tr><td>Sample</td><td class="num">123 scenarios / 20.75 h</td><td class="note">39 real losses of separation</td></tr>
   </table>
   <div class="callout">
-    <strong>Precision of 0.57 is the honest result.</strong> The detector thresholds a
-    point estimate: a predicted 4.9 NM miss alerts, 5.1 NM does not, and the
-    velocity estimate behind that prediction carries enough noise to move the
-    answer across the line. The principled fix is probabilistic detection using
-    the covariance the Kalman filter already maintains &mdash; and it is the one
-    thing worth building next.
+    <strong>Precision of 0.57 is an operating point, not a defect.</strong> The median
+    &ldquo;false&rdquo; alert is a pair that genuinely closed to 5.52&nbsp;NM against a
+    5&nbsp;NM standard, raised at 296&nbsp;s against a 300&nbsp;s lookahead ceiling.
+    Halve the lookahead and precision reaches 0.87 &mdash; but lead time is the
+    product, so the default stands. Quoting a precision figure without the lookahead
+    it was measured at was the actual error.
+  </div>
+  <div class="callout">
+    <strong>That took two attempts to work out.</strong> The stated cause for four
+    milestones was point-estimate thresholding, so the principled fix got built &mdash;
+    probabilistic detection using the Kalman covariance. It won on the family it was
+    tuned against and vanished on shifted traffic. The failed fix is what prompted
+    measuring the alerts instead of theorising about them.
   </div>
 
   <h3>Trajectory prediction</h3>

@@ -60,7 +60,7 @@ scanners.
 
 **"How big is it?"**
 About 8,000 lines of application code and slightly more test code than that —
-553 tests at 81% coverage. Eleven written decision records explaining why each
+707 tests at 82% coverage. Thirteen written decision records explaining why each
 significant choice was made over its alternatives.
 
 **"What was the hardest part?"**
@@ -104,7 +104,7 @@ flag rather than a boast.
 > and its precision is 0.57, which isn't good enough, and the README says so
 > above the good numbers.
 >
-> The repository also contains three things I believed, wrote down, and then
+> The repository also contains four things I believed, wrote down, and then
 > measured and found were wrong. Those corrections are still in it, next to
 > what they replaced.
 
@@ -133,9 +133,9 @@ This usually gets a reaction.
 dead reckoning, not the position. So a broken, missing, or NaN-producing model
 degrades to physics rather than to nonsense, and that's executed in CI with the
 dependency genuinely uninstalled. The linear baseline ships alongside, and on
-shifted traffic the neural net's advantage isn't statistically distinguishable
-from it — a scenario-clustered bootstrap, because consecutive samples from one
-flight are near-duplicates.
+shifted traffic the neural net's advantage over it isn't statistically
+distinguishable at 60 s or 120 s — it is at 30 s — from a scenario-clustered
+bootstrap, because consecutive samples from one flight are near-duplicates.
 
 **4. The tests, one story each** — property tests found two geodesy bugs on their
 first run; an architecture test caught me importing one service from another;
