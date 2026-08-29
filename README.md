@@ -9,6 +9,16 @@ Kafka turn noisy aircraft position reports into smoothed tracks and advisory
 safety alerts: predicted losses of separation, unmodelled maneuvers, and
 emergency transponder codes.
 
+<!-- REWRITE IN YOUR VOICE. One honest paragraph: why you built this and what
+     measuring it changed your mind about. Draft below — replace it. -->
+> I built this to have one system where I could show the whole loop an engineer
+> actually owns — event streaming, a filter, tests at every level, tracing across
+> a broker, a real deployment — on a problem I find genuinely hard. The part I did
+> not expect was how often *measuring* a feature killed it: the probabilistic
+> conflict detector I was proud of did not beat the deterministic one, and the
+> conformance monitor turned out to be a turn detector blind to climbs. Publishing
+> those two negative results taught me more than shipping the features would have.
+
 ![Two aircraft converging head-on at FL350. A predicted-conflict advisory fires
 five minutes before closest approach, naming both aircraft and the predicted
 separation.](docs/assets/demo.gif)
@@ -396,14 +406,10 @@ claims about CI.
 
 ## What comes next, and what deliberately does not
 
-Every milestone is done and the pipeline is green, so the project is finished
-as a portfolio piece. What would come next, and what is deliberately declined,
-is in [`docs/future-work.md`](docs/future-work.md).
-
-Everything beyond it — the one technical improvement worth making, the
-engineering that scale would force, and the things declined on purpose — is in
-[`docs/future-work.md`](docs/future-work.md). Reading it is the fastest way to
-see where the boundaries are and why they are where they are.
+Every milestone is done and the pipeline is green, so the project is finished as
+a portfolio piece. [`docs/future-work.md`](docs/future-work.md) is the fastest
+way to see the boundaries: the one technical improvement worth making, the
+engineering that scale would force, and the things declined on purpose.
 
 ## Licence
 
