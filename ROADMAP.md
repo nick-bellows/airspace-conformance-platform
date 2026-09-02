@@ -14,17 +14,17 @@ Last verified: 2026-09-02
 
 The project is intentionally finished as a portfolio piece. Its most valuable result is not feature breadth: it is the measured test pyramid, the explicit operational limits, and a probabilistic-detector improvement that failed to replicate on shifted scenarios.
 
-## Current milestone - 60-second reviewer route
+## Completed milestone - 60-second reviewer route
 
 Goal: reduce the existing Pages site to a clear first-minute path without building another runtime feature.
 
-### Work
+### Delivered
 
-1. Add a prominent `Start the 60-second tour` route on `docs/index.html`.
-2. Route the reviewer through exactly four evidence points: live synthetic scenario, event/service architecture, one end-to-end/failure-mode proof, and the non-replicating detector result.
-3. Add direct code links for the message contract, idempotent consumer path, conformance rule, WebSocket fan-out, and representative test.
-4. Keep the current demo GIF and committed replay synchronized with the real simulator. Do not create illustrative control-room imagery.
-5. Verify mobile layout, keyboard focus, contrast, asset weight, and logged-out links.
+1. `docs/index.html` now opens with a four-stop, 60-second route through the real replay, code boundaries, broker integration proof, and negative result.
+2. The route links directly to representative contracts, storage, conformance, API, integration, and end-to-end files.
+3. Keyboard focus and reduced-motion behavior are explicit, while the replay remains a bounded static asset generated from the simulator.
+4. `tests/unit/test_portfolio_site.py` guards tour anchors, direct evidence links, replay presence and size, accessibility controls, and claim-bearing metrics against the retained evaluation JSON.
+5. The README points logged-out reviewers directly to the tour.
 
 ### Acceptance criteria
 

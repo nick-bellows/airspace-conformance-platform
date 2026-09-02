@@ -19,6 +19,7 @@
     font: 16px/1.65 var(--sans); -webkit-font-smoothing: antialiased;
   }
   a { color: var(--blue); }
+  :focus-visible { outline: 3px solid var(--amber); outline-offset: 3px; }
   .wrap { max-width: 980px; margin: 0 auto; padding: 0 20px; }
   header { padding: 56px 0 28px; border-bottom: 1px solid var(--line); }
   h1 { margin: 0 0 6px; font-size: clamp(28px, 5vw, 42px); letter-spacing: -0.02em; }
@@ -82,6 +83,7 @@
     losses of separation, unmodelled manoeuvres, and emergency transponder codes.
   </p>
   <div class="badges">
+    <a class="badge cta" href="#tour">Start the 60-second tour</a>
     <a class="badge cta" href="https://github.com/nick-bellows/airspace-conformance-platform">Source on GitHub</a>
     <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/tree/main/docs/adr">13 ADRs</a>
     <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/docs/limitations.md">Limitations</a>
@@ -89,7 +91,34 @@
   </div>
 </div></header>
 
-<section><div class="wrap">
+<section id="tour"><div class="wrap">
+  <h2>60-second engineering tour</h2>
+  <div class="cols">
+    <div class="card">
+      <h3>1. Watch the system</h3>
+      <p><a href="#system-replay">Replay a measured run</a> from the real simulator, tracker, and conformance monitor. The traffic is synthetic; the recorded behavior is not mocked.</p>
+    </div>
+    <div class="card">
+      <h3>2. Inspect a boundary</h3>
+      <p>Read the <a href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/src/acp/common/contracts.py">versioned message contracts</a> and the <a href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/src/acp/storage/stores.py">idempotent persistence boundary</a>.</p>
+    </div>
+    <div class="card">
+      <h3>3. Follow real integration proof</h3>
+      <p>The <a href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/tests/integration/test_messaging.py">broker integration test</a> exercises Redpanda instead of replacing Kafka with a mock.</p>
+    </div>
+    <div class="card">
+      <h3>4. Read the negative result</h3>
+      <p><a href="#results">See why a more complex probabilistic detector was not promoted</a>, and why the simpler operating point remains defensible.</p>
+    </div>
+  </div>
+  <p class="note" style="margin-top:18px">
+    Representative evidence: <a href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/src/acp/services/conformance/separation.py">separation logic</a>,
+    <a href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/src/acp/services/api/app.py">REST/WebSocket boundary</a>, and
+    <a href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/tests/e2e/test_pipeline.py">end-to-end system test</a>.
+  </p>
+</div></section>
+
+<section id="system-replay"><div class="wrap">
   <h2>The system, replayed</h2>
   <div class="stage">
     <canvas id="view" width="1440" height="840" aria-label="Plan view of four simulated aircraft; two converge head-on and a predicted-conflict advisory fires."></canvas>
@@ -113,7 +142,7 @@
   </p>
 </div></section>
 
-<section><div class="wrap">
+<section id="results"><div class="wrap">
   <h2>Results</h2>
   <h3>Conflict detection</h3>
   <p>
@@ -162,7 +191,7 @@
   </div>
 </div></section>
 
-<section><div class="wrap">
+<section id="architecture"><div class="wrap">
   <h2>How it is built</h2>
   <div class="cols">
     <div class="card">
@@ -278,7 +307,10 @@ docker compose -f deploy/compose.yml up -d --build
   const C = { grid: "#16242f", dim: "#6f8593", blue: "#4aa8ff", red: "#ff6b5e",
               amber: "#e0a33a", trail: "#263e52", ink: "#05080b" };
 
-  let frames = [], spanNm = 95, i = 0, playing = true, timer = null;
+  let frames = [], spanNm = 95, i = 0;
+  let playing = !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let timer = null;
+  play.textContent = playing ? "Pause" : "Play";
 
   const scale = () => (Math.min(W, H) - 2 * MARGIN) / spanNm;
   const px = (e, n) => [W / 2 + e * scale(), H / 2 - n * scale()];
