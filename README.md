@@ -221,7 +221,7 @@ belongs to the deployment).
 | k8s | Whether a pod actually starts under the security context it declares | CI, `kind` |
 | perf | Whether it keeps up at realistic load | CI, informational |
 
-The fast gate has **no coverage exclusions** and reports 82% over 707 tests. The
+The fast gate has **no coverage exclusions** and reports 82% over 720 tests. The
 two pure I/O adapters are measured separately by the integration job against
 their own floor, which is what turned an earlier promise ("these will be covered
 later") into something enforced.

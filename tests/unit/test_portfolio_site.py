@@ -74,3 +74,64 @@ def test_accessibility_controls_are_explicit() -> None:
     assert ":focus-visible" in markup
     assert "prefers-reduced-motion: reduce" in markup
     assert 'aria-label="Scrub through the replay"' in markup
+
+
+# --------------------------------------------------------------------------
+# Counts that appear on more than one surface are counts that drift. These
+# three had, twice each: the page said 553 tests while the README said 707 and
+# the truth was 720; the page claimed "ten third-party actions" against eight;
+# and the ADR badge sat at 11 and then 13 while the directory grew.
+# --------------------------------------------------------------------------
+
+
+def test_the_published_adr_count_matches_the_directory() -> None:
+    count = len(list((ROOT / "docs" / "adr").glob("*.md")))
+    assert f">{count} ADRs<" in SITE.read_text(encoding="utf-8"), (
+        f"the page's ADR badge disagrees with the {count} files in docs/adr/"
+    )
+
+
+def test_the_published_action_count_matches_the_workflow() -> None:
+    """Pinning actions by SHA is a real claim; the number attached to it should be too."""
+    workflow = (ROOT / ".github" / "workflows" / "quality.yml").read_text(encoding="utf-8")
+    unique = {
+        line.split("uses:")[1].split("@")[0].strip()
+        for line in workflow.splitlines()
+        if "uses:" in line
+    }
+    words = {
+        1: "one",
+        2: "two",
+        3: "three",
+        4: "four",
+        5: "five",
+        6: "six",
+        7: "seven",
+        8: "eight",
+        9: "nine",
+        10: "ten",
+    }
+    spelled = words.get(len(unique), str(len(unique)))
+    assert f"All {spelled} third-party actions pinned" in SITE.read_text(encoding="utf-8"), (
+        f"the page's action count disagrees with the {len(unique)} unique actions in the workflow"
+    )
+
+
+def test_the_page_and_the_readme_agree_on_the_test_count() -> None:
+    """They diverged by 167 once, which is how you learn to check.
+
+    Neither is the source of truth -- the suite is -- but the suite's count
+    cannot be established cheaply from inside the suite. Agreement between the
+    two published surfaces is the affordable half of the guarantee, and it is
+    the half that failed.
+    """
+    import re
+
+    site = re.search(r"(\d+) unit and contract tests", SITE.read_text(encoding="utf-8"))
+    readme = re.search(
+        r"reports \d+% over (\d+) tests", (ROOT / "README.md").read_text(encoding="utf-8")
+    )
+    assert site and readme, "both surfaces must state a test count in the expected shape"
+    assert site.group(1) == readme.group(1), (
+        f"the page says {site.group(1)} tests and the README says {readme.group(1)}"
+    )

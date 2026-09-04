@@ -62,7 +62,7 @@ scanners.
 
 **"How big is it?"**
 About 8,000 lines of application code and slightly more test code than that —
-707 tests at 82% coverage. Thirteen written decision records explaining why each
+720 tests at 82% coverage. Fourteen written decision records explaining why each
 significant choice was made over its alternatives.
 
 **"What was the hardest part?"**

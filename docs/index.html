@@ -85,7 +85,7 @@
   <div class="badges">
     <a class="badge cta" href="#tour">Start the 60-second tour</a>
     <a class="badge cta" href="https://github.com/nick-bellows/airspace-conformance-platform">Source on GitHub</a>
-    <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/tree/main/docs/adr">13 ADRs</a>
+    <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/tree/main/docs/adr">14 ADRs</a>
     <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/docs/limitations.md">Limitations</a>
     <a class="badge" href="https://github.com/nick-bellows/airspace-conformance-platform/blob/main/eval/results/conflict_detection.md">Evaluation</a>
   </div>
@@ -232,10 +232,10 @@
   <h2>Engineering</h2>
   <table>
     <tr><th>Concern</th><th>What is there</th></tr>
-    <tr><td>Testing</td><td>553 unit and contract tests at 81% branch coverage with no exclusions, 28 integration tests on real Redpanda/Postgres/Redis, 8 end-to-end under compose, and a measured latency budget</td></tr>
+    <tr><td>Testing</td><td>720 unit and contract tests at 82% branch coverage with no exclusions, 28 integration tests on real Redpanda/Postgres/Redis, 8 end-to-end under compose, and a measured latency budget</td></tr>
     <tr><td>Contracts</td><td>Committed JSON Schemas and OpenAPI, drift-gated, plus a backward-compatibility diff against git. Schemathesis fuzzes the API against its own document</td></tr>
     <tr><td>Observability</td><td>Prometheus metrics on all four services, a provisioned Grafana dashboard, and W3C trace context carried across Kafka into Jaeger</td></tr>
-    <tr><td>DevSecOps</td><td>bandit, pip-audit, gitleaks over full history, Trivy, and a syft SBOM. All ten third-party actions pinned to commit SHAs</td></tr>
+    <tr><td>DevSecOps</td><td>bandit, pip-audit, gitleaks over full history, Trivy, and a syft SBOM. All eight third-party actions pinned to commit SHAs</td></tr>
     <tr><td>Deployment</td><td>Compose and Kubernetes manifests, applied to a real <code>kind</code> cluster in CI. The image is built once and every consumer asserts it is the one that was tested</td></tr>
   </table>
 
