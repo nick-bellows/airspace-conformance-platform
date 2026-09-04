@@ -127,9 +127,9 @@ def test_the_page_and_the_readme_agree_on_the_test_count() -> None:
     """
     import re
 
-    site = re.search(r"(\d+) unit and contract tests", SITE.read_text(encoding="utf-8"))
+    site = re.search(r"(\d+)\+? unit and contract tests", SITE.read_text(encoding="utf-8"))
     readme = re.search(
-        r"reports \d+% over (\d+) tests", (ROOT / "README.md").read_text(encoding="utf-8")
+        r"reports \d+% over (\d+)\+? tests", (ROOT / "README.md").read_text(encoding="utf-8")
     )
     assert site and readme, "both surfaces must state a test count in the expected shape"
     assert site.group(1) == readme.group(1), (
