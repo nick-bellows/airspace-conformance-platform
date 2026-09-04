@@ -203,8 +203,16 @@ real prediction error is substantially larger than anything reported here.
 
 At **500 aircraft** reporting at 1 Hz, one full cycle — every report through the
 Kalman filter plus one conflict scan of the whole picture — takes a **median of
-204 ms and a p95 of 251 ms** against a 500 ms budget and a 1000 ms report
-interval. Roughly four times the headroom needed to keep up with real time.
+363 ms and a p95 of 406 ms** against a 500 ms budget and a 1000 ms report
+interval, so the system keeps up with real time. Measured 2026-09-04 on an AMD
+Ryzen 9 7900X; every figure here carries the hardware it was taken on, because
+one that does not is not a measurement.
+
+**One component budget is missed and says so.** The conflict scan alone is
+342 ms p95 against a 250 ms budget written for it. That predates the
+interval-overlap fix, which costs about 5% of it, and CI does not catch it
+because the `perf` job is report-only on a shared runner — a deliberate trade
+whose price is exactly this.
 [`docs/latency-budget.md`](docs/latency-budget.md) states what is measured
 (the compute path) and what is not (Kafka, Postgres, Redis — their latency
 belongs to the deployment).

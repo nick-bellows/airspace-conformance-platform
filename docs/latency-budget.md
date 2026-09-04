@@ -82,14 +82,45 @@ median warning lead time in `eval/results/conflict_detection.md` is 249 s.
 
 ## Measured
 
-On a laptop CPU, 500 aircraft, over 20 cycles:
+Re-measured 2026-09-04 on an **AMD Ryzen 9 7900X (12C/24T), Windows 11,
+CPython 3.13**, 500 aircraft, 20 cycles:
 
-| | Median | p95 |
+| | Median | p95 | Budget | |
+| --- | --- | --- | --- | --- |
+| Per report through the filter | — | 0.08 ms | 1 ms | within |
+| Conflict scan of the whole picture | — | **342 ms** | 250 ms | **over** |
+| Full cycle (500 reports filtered + one scan) | 363 ms | **406 ms** | 500 ms | within |
+
+**The conflict-scan budget is not met, and has not been for some time.** This
+document previously reported a 204 ms median and 251 ms p95 full cycle "on a
+laptop CPU" with no CPU named and no date, measured at M4 on 2026-08-15. Those
+figures do not reproduce on current code, on hardware that should comfortably
+beat the original. They are superseded rather than explained: the original
+hardware was never recorded, so the gap cannot be attributed.
+
+The scan miss is **not** caused by the interval-overlap fix in
+[ADR 0014](adr/0014-conflict-is-an-interval-not-an-instant.md), though that fix
+is not free. Measured on the same machine, back to back:
+
+| Detector | Conflict-scan p95 | Full-cycle p95 |
 | --- | --- | --- |
-| Full cycle (500 reports filtered + one scan) | 204 ms | **251 ms** |
+| `acp-separation-v1` (before the fix) | 324 ms | 392 ms |
+| `acp-separation-v2` (after) | 342 ms | 406 ms |
 
-Against a 500 ms budget and a 1000 ms report interval, that is roughly a factor
-of four of headroom before the system stops keeping up with real time.
+So the correct geometry costs about **5%**, and the budget was already being
+missed by 30% without it. Solving two intervals is cheaper than the alternatives
+considered in that ADR, and a scan that is fast and wrong is not a trade this
+project makes.
+
+**Why CI stays green anyway.** The `perf` job sets `ACP_PERF_REPORT_ONLY=1` and
+is `continue-on-error`, because wall-clock assertions on a shared runner measure
+the runner. That is a deliberate decision recorded in `limitations.md`, and its
+cost is exactly this: a budget can be missed for weeks without the pipeline
+saying so. **"All jobs green" must never be paraphrased as "all budgets met."**
+
+The full cycle still fits its 500 ms budget against a 1000 ms report interval,
+so the system keeps up with real time. The scan is the component that does
+not fit the budget written for it.
 
 ## What actually made the scan fast, and what did not
 

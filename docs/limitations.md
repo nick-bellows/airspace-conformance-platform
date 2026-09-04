@@ -349,6 +349,19 @@ them, and what is deliberately declined, is in [`future-work.md`](future-work.md
 
 ---
 
+- **A documented component budget is currently missed.** The conflict scan is
+  342 ms p95 against the 250 ms budget written for it, re-measured 2026-09-04 on
+  an AMD Ryzen 9 7900X. The full cycle still fits its 500 ms budget, so the
+  system keeps up with real time, but the component target does not hold. It is
+  invisible to CI by design: the `perf` job is report-only on a shared runner,
+  which is the right call for wall-clock assertions and has exactly this cost.
+  **"All thirteen jobs green" does not mean "all budgets met."**
+- **The previously published 204 ms / 251 ms figures are superseded.** They were
+  recorded at M4 "on a laptop CPU" with no CPU named and no date, and do not
+  reproduce on current code on faster hardware. The gap cannot be attributed
+  because the original hardware was never recorded — which is the argument for
+  stamping every measurement with the machine that produced it.
+
 ## 6. What is measured, and where
 
 | Claim | Evidence | Caveat |
