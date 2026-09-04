@@ -92,6 +92,8 @@ class ConformanceRunner:
         self._stale_after_s = stale_after_s
 
         self._picture: dict[str, TrackUpdate] = {}
+        #: Explicitly terminated track ids awaiting release at the next scan.
+        self._terminated: set[str] = set()
         #: The trace that delivered each track's latest position, for linking a
         #: scan back to the reports that caused it. Values are opaque
         #: OpenTelemetry span contexts, or None when tracing is not installed.
@@ -156,6 +158,14 @@ class ConformanceRunner:
         if update.state is TrackState.TERMINATED:
             self._picture.pop(update.track_id, None)
             self._trace_of.pop(update.track_id, None)
+            # A track leaving the picture is only half the cleanup. Alerts about
+            # it and any conformance prediction state must be released too, and
+            # that used to happen only on the *timeout* path -- so an aircraft
+            # the tracker explicitly said was gone kept an active alert until
+            # ordinary hysteresis cleared it, and kept prediction windows for a
+            # track id that gets reused (ids are derived from the address).
+            # Deferred to the scan so both paths release through one route.
+            self._terminated.add(update.track_id)
             return
         existing = self._picture.get(update.track_id)
         # Out-of-order updates would move a track backwards in time and could
@@ -209,7 +219,10 @@ class ConformanceRunner:
         is many-to-one.
         """
         self._scans += 1
-        vanished = self._expire_stale(now)
+        # Timed-out and explicitly terminated tracks are the same thing to
+        # everything downstream: gone, and holding state that must be released.
+        vanished = self._expire_stale(now) + sorted(self._terminated)
+        self._terminated.clear()
         links = [context for context in self._trace_of.values() if context is not None]
 
         with span("conflict-scan", links=links, tracks=len(self._picture)):

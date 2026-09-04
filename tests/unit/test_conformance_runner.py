@@ -26,6 +26,7 @@ from acp.common.contracts import (
 from acp.common.geodesy import destination_point
 from acp.common.messaging import MessagePublisher, MessageSubscriber
 from acp.services.conformance.alerts import AlertManager
+from acp.services.conformance.monitor import ConformanceMonitor
 from acp.services.conformance.runner import ConformanceRunner
 from acp.services.conformance.separation import SeparationMonitor
 from tests.unit.fakes import FakePublisher, FakeSubscriber
@@ -311,3 +312,62 @@ async def test_the_runner_consumes_updates_until_the_stream_ends() -> None:
     )
     stats = await runner.run()
     assert stats.updates_consumed == 2
+
+
+async def test_explicit_termination_clears_an_active_alert_immediately() -> None:
+    """The other half of `test_a_terminated_track_is_removed_from_the_picture`.
+
+    That test asserts the track leaves the picture, which it always did. An
+    external review found the rest of the cleanup missing: a `TERMINATED`
+    update popped the picture and returned, without telling the alert manager
+    or the conformance monitor. Only the *timeout* path called `forget`.
+
+    The observable cost is an alert for an aircraft the system has been told no
+    longer exists, surviving until ordinary hysteresis clears it several scans
+    later -- and conformance prediction state retained for a track id that can
+    be reused, because track ids are derived from the aircraft address.
+    """
+    publisher = FakePublisher()
+    runner = a_runner(publisher)
+    for track in converging_pair():
+        runner.absorb(track)
+    await runner.scan_now(NOW)
+    published = publisher.messages_on(TOPIC_ALERTS)
+    raised = [m for m in published if m.state is AlertState.NEW]  # type: ignore[attr-defined]
+    assert raised, "expected a conflict alert before terminating"
+
+    runner.absorb(a_track("trk-west", state=TrackState.TERMINATED))
+    await runner.scan_now(NOW + timedelta(seconds=1))
+
+    cleared = [
+        m
+        for m in publisher.messages_on(TOPIC_ALERTS)
+        if m.state is AlertState.CLEARED  # type: ignore[attr-defined]
+    ]
+    assert cleared, (
+        "an alert about a track the system was explicitly told is gone must clear "
+        "on the next scan, not wait for hysteresis"
+    )
+
+
+async def test_explicit_termination_releases_conformance_state() -> None:
+    """The other half: prediction windows must not outlive the track.
+
+    Track ids are derived from the aircraft address, so a retained window is
+    not merely a leak -- a later aircraft on the same address inherits the
+    prediction history of a different flight.
+    """
+    monitor = ConformanceMonitor()
+    runner = a_runner(FakePublisher(), conformance=monitor)
+    for track in converging_pair():
+        runner.absorb(track)
+    await runner.scan_now(NOW)
+    assert monitor.tracked > 0, "expected the monitor to be holding window state"
+
+    for track in converging_pair():
+        runner.absorb(a_track(track.track_id, state=TrackState.TERMINATED))
+    await runner.scan_now(NOW + timedelta(seconds=1))
+
+    assert monitor.tracked == 0, (
+        "conformance windows survived a track the system was told no longer exists"
+    )
