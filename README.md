@@ -36,6 +36,13 @@ monitor the services run, not a mock-up. Regenerate it with
 > never executed until this repository got a remote, and the five defects that
 > first run exposed (plus the eighteen three external reviews found before it) are
 > in [`how-it-was-built.md`](docs/how-it-was-built.md).
+>
+> **Built with AI assistance, and that is documented rather than hidden.**
+> [`ai-assisted-development.md`](docs/ai-assisted-development.md) records how
+> Claude Code was used for implementation, refactoring and test creation, the
+> guardrails applied, and what it got wrong — the dominant failure mode was
+> confident false prose, not broken code, which is why the definition of done
+> forbids any claim in prose that nothing checks.
 
 > **Not an air traffic control system.** Advisory output only, synthetic data
 > only, no certification of any kind. Read [`docs/safety-notes.md`](docs/safety-notes.md)
@@ -277,7 +284,17 @@ It runs under the same restrictive context the Kubernetes manifests declare —
 `--read-only --user 1001 --cap-drop ALL` — which is a claim worth checking
 rather than believing.
 
-Run the whole thing (Docker required):
+Run the whole thing (Docker required). Linux, macOS, or WSL:
+
+```bash
+./scripts/demo.sh                                 # head-on conflict
+./scripts/demo.sh --scenario unannounced-turn     # conformance monitoring
+./scripts/demo.sh --scenario quiet-cruise         # nothing should ever alert
+./scripts/demo.sh --tools                         # plus a Kafka console on :8080
+./scripts/demo.sh --down                          # tear down, including volumes
+```
+
+Windows PowerShell:
 
 ```powershell
 .\scripts\demo.ps1                                # head-on conflict
@@ -295,7 +312,13 @@ Then open <http://localhost:8000>.
 | `unannounced-turn` | ACP501 turns 80° with nothing to forecast it; a conformance advisory appears once the earlier prediction matures, then clears. | turn at 4 min, alert ~4½ min |
 | `quiet-cruise` | Six well-separated aircraft and no alerts at all. The false-alarm control. | never |
 
-Develop and run the checks:
+Develop and run the checks — the same five gates CI runs first:
+
+```bash
+python -m venv .venv
+.venv/bin/python -m pip install -e ".[all]"
+./scripts/run_checks.sh
+```
 
 ```powershell
 python -m venv .venv
@@ -305,9 +328,9 @@ python -m venv .venv
 
 See metrics, dashboards, and traces:
 
-```powershell
-$env:ACP_OTLP_ENDPOINT = "http://jaeger:4318/v1/traces"
-docker compose -f deploy/compose.yml --profile observability up -d
+```bash
+ACP_OTLP_ENDPOINT=http://jaeger:4318/v1/traces \
+  docker compose -f deploy/compose.yml --profile observability up -d
 ```
 
 Grafana on :3000 (dashboard provisioned, anonymous read-only access),
