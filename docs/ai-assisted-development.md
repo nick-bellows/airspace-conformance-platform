@@ -61,8 +61,12 @@ The evaluation harness has a meta-test that pins the definitions of "detected"
 and "false alert", so relaxing them to improve a number has to break a test.
 
 **Generated numbers never appear in prose until the generator is committed and
-reproducible.** Every report is stamped with component versions, the seed, and a
-hash of the input set.
+reproducible.** Every report is stamped with the seed and the generator version.
+The conflict-detection report additionally carries a scenario-set fingerprint and
+the detector and filter versions, which is what lets a test fail when the traffic
+behind a published number changes; the later reports do not all carry every one
+of those, and an external review was right to say the blanket wording overstated
+it.
 
 ## What went wrong
 

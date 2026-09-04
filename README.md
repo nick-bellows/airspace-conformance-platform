@@ -92,6 +92,7 @@ alternatives and why they lost:
 | [0011](docs/adr/0011-partition-ownership-is-state.md) | Partition ownership is state: a consumer that loses a partition releases its aircraft without terminating them |
 | [0012](docs/adr/0012-probabilistic-conflict-detection.md) | Probabilistic conflict detection, built alongside the deterministic one — and the measurement that says it does not win |
 | [0013](docs/adr/0013-lookahead-is-an-operating-point.md) | The lookahead is an operating point, so the precision curve gets published rather than one point on it |
+| [0014](docs/adr/0014-conflict-is-an-interval-not-an-instant.md) | A conflict is both standards breached at the same *moment*, which is an interval-overlap test rather than a check at closest approach |
 
 ## Results
 
@@ -109,11 +110,11 @@ only the noisy observation stream.
 | Scenarios / simulated airspace time | 123 / 20.75 hours |
 | Real losses of separation | 39 |
 | Recall (alerted before violation) | 1.00 |
-| Precision | 0.57 |
-| False alerts per airspace hour | 1.40 |
+| Precision | 0.56 |
+| False alerts per airspace hour | 1.49 |
 | Median warning lead time | 249 s |
 
-**Precision 0.57 is an operating point, not a defect** — and quoting it without
+**Precision 0.56 is an operating point, not a defect** — and quoting it without
 the lookahead it was measured at was the actual reporting error. The median
 "false" alert is a pair that genuinely closed to 5.52 NM against a 5 NM standard,
 raised at 296 s against a 300 s ceiling. They are not errors; they are the cost
@@ -121,7 +122,7 @@ of extrapolating constant velocity for five minutes.
 
 | Lookahead | Precision (nominal) | Precision (shifted) | Median lead |
 | --- | --- | --- | --- |
-| 300 s ←default | 0.57 | 0.40 | 249 s |
+| 300 s ←default | 0.56 | 0.40 | 249 s |
 | 180 s | 0.72 | 0.55 | 180 s |
 | 120 s | 0.87 | 0.65 | 120 s |
 
@@ -381,10 +382,11 @@ that mirror the local gate — CI adds `degradation`, `integration`, `e2e`, `per
 
 The security job asks four separate questions: bandit for the code, pip-audit
 for the dependencies that actually ship, gitleaks over the full git history, and
-Trivy plus a syft SBOM for the image. `publish` pushes to GHCR on `main`, and it
-is the only job with `needs:`, because pushing an image that failed its own
-tests is the one ordering that matters. Full breakdown in
-[`docs/operations.md`](docs/operations.md) §11.
+Trivy plus a syft SBOM for the image. `publish` pushes to GHCR on `main`, gated
+on every job except the informational `perf`, because pushing an image that
+failed its own tests is the one ordering that matters. Four other jobs depend on
+`image` so they all scan and run the *same* artefact rather than rebuilding it.
+Full breakdown in [`docs/operations.md`](docs/operations.md) §11.
 
 Three of the current tests are worth singling out:
 

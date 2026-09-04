@@ -21,8 +21,8 @@ The population is not what "false alert" suggests:
 | | |
 | --- | --- |
 | Median true minimum separation of a false alert | **5.52 NM** (standard: 5 NM) |
-| False alerts where the pair truly came within 10 NM | **19 of 29** |
-| Median predicted time-to-CPA at raise | **296 s** (ceiling: 300 s) |
+| False alerts where the pair truly came within 10 NM | **21 of 31** |
+| Median predicted time-to-CPA at raise | **294 s** (ceiling: 300 s) |
 | Median horizontal prediction error, true alerts | −0.19 NM |
 | Median horizontal prediction error, false alerts | +0.92 NM |
 
@@ -39,11 +39,13 @@ failure and is nothing of the sort.
 
 | Lookahead | Precision (nominal) | Precision (shifted) | Recall (shifted) | Median lead |
 | --- | --- | --- | --- | --- |
-| 300 s ←default | 0.5735 | 0.4000 | 0.9333 | 249 s |
-| 240 s | 0.6393 | 0.4667 | 0.9333 | 237 s |
-| 180 s | 0.7222 | 0.5490 | 0.9000 | 180 s |
-| 120 s | 0.8667 | 0.6512 | 0.9000 | 120 s |
-| 60 s | 0.8667 | 0.7105 | 0.8667 | 60 s |
+| 300 s ←default | 0.5571 | 0.4000 | 0.9667 | 249 s |
+| 240 s | 0.6393 | 0.4667 | 0.9667 | 237 s |
+| 180 s | 0.7222 | 0.5490 | 0.9667 | 180 s |
+| 120 s | 0.8667 | 0.6364 | 0.9667 | 120 s |
+| 60 s | 0.8667 | 0.7179 | 0.9667 | 60 s |
+
+Re-measured on `acp-separation-v2`. Nominal recall is 1.00 at every row.
 
 Direction and rough magnitude hold on **both** families, which is precisely what
 the probabilistic threshold failed to do and the reason this is trusted where
@@ -57,10 +59,23 @@ It would be easy, and wrong, to adopt 120 s and report precision 0.87.
 Going from a median four-minute warning to a two-minute one to make a table look
 better is changing the subject, not improving the detector.
 
-**On shifted traffic it costs recall.** At 120 s a real loss of separation goes
-undetected that the 300 s window catches (0.933 → 0.900). A missed conflict is
-the failure mode this system is built to avoid, and trading it for precision is
-the wrong direction at any exchange rate.
+**It used to cost recall on shifted traffic, and no longer does — this ADR was
+half wrong.** The original version of this table showed shifted recall falling
+from 0.933 at 300 s to 0.900 at 120 s, and that was the second of two reasons
+given for keeping the default. It was an artefact of a detector defect. Until
+`acp-separation-v2` the detector evaluated the vertical standard only at
+horizontal closest approach, so it missed pairs that pass inside the lateral
+standard while still vertically clear and then converge vertically before
+separating ([ADR 0014](0014-conflict-is-an-interval-not-an-instant.md)). Fixing
+that raised shifted recall to **0.9667 at every window in the sweep**, flat.
+
+So the recall argument is withdrawn. **The default stands on lead time alone**,
+which is sufficient: at 300 s the median warning is around four minutes and at
+120 s it is two, and warning time is what the system is for. A detector that is
+precise because it warns too late has changed the subject rather than improved.
+
+Recording the withdrawal rather than quietly restating the table is the point.
+An argument that survives only because of a bug is not an argument.
 
 **Nothing about the detector improved.** Shortening the window does not make a
 prediction better, it declines to make the hard ones. That is a legitimate
@@ -75,7 +90,7 @@ carries the lookahead it was measured at, and the curve is committed. This was
 always the real defect: a single figure quoted without its axis described one
 point as though it were the system.
 
-**A thread is left open and named.** 8 of the 29 false alerts involve pairs that
+**A thread is left open and named.** 9 of the 31 false alerts involve pairs that
 breached the lateral standard for real but were vertically clear at closest
 approach. Those are vertical prediction errors, not lookahead cost, and this ADR
 does not explain them. Constant vertical rate over a five-minute horizon is the

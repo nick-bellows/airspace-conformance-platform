@@ -1,6 +1,6 @@
 # Does recall survive manoeuvring traffic?
 
-Generated 2026-08-18T00:24:42.893193+00:00 · seed `20260815` · 120 scenarios per row · generator `acp-gen-v1` · detector `acp-separation-v1`
+Generated 2026-09-04T19:03:00.839080+00:00 · seed `20260815` · 120 scenarios per row · generator `acp-gen-v1` · detector `acp-separation-v2`
 
 Reproduce with `python eval/run_manoeuvre_sweep.py --scenarios 120`.
 
@@ -10,10 +10,10 @@ through. Same seed, same density, same geometry, same speeds.
 
 | Manoeuvre probability | Recall | Missed | Precision | Median lead |
 | --- | --- | --- | --- | --- |
-| 0.0 | 0.9773 | 1 / 44 | 0.7818 | 276.0 s |
-| 0.35 ←nominal | 1.0 | 0 / 38 | 0.5672 | 244.5 s |
-| 0.7 | 1.0 | 0 / 43 | 0.589 | 221.0 s |
-| 1.0 | 1.0 | 0 / 27 | 0.3857 | 211.0 s |
+| 0.0 | 0.9773 | 1 / 44 | 0.7544 | 276.0 s |
+| 0.35 ←nominal | 1.0 | 0 / 38 | 0.5507 | 244.5 s |
+| 0.7 | 1.0 | 0 / 43 | 0.5811 | 221.0 s |
+| 1.0 | 1.0 | 0 / 27 | 0.3803 | 211.0 s |
 
 ## What this says
 
@@ -35,7 +35,7 @@ before the violation. The detector needs to be right once, at any point in
 the approach, and manoeuvring traffic gives it many chances.
 
 **What manoeuvres actually cost is precision and lead time.** Precision
-falls from 0.7818 to 0.3857 across the sweep,
+falls from 0.7544 to 0.3803 across the sweep,
 and the median warning from 276.0 s to
 211.0 s. Every turn creates a
 transient geometry that briefly looks like a conflict and then resolves.

@@ -1,23 +1,24 @@
 {
   "meta": {
-    "generated_at": "2026-08-17T02:13:11.858892+00:00",
+    "generated_at": "2026-09-04T19:04:52.733566+00:00",
     "seed": 20260815,
     "scenarios": 123,
     "generated_scenarios": 120,
     "simulated_hours": 20.75,
     "scenario_set_sha256_16": "9c3989e981bd424b",
     "generator_version": "acp-gen-v1",
-    "detector_version": "acp-separation-v1"
+    "detector_version": "acp-separation-v2",
+    "family": "nominal"
   },
   "rows": [
     {
       "threshold": null,
       "detector": "deterministic",
       "recall": 1.0,
-      "precision": 0.5735,
-      "alerts_raised": 68,
-      "false_alerts": 29,
-      "false_alerts_per_hour": 1.4,
+      "precision": 0.5571,
+      "alerts_raised": 70,
+      "false_alerts": 31,
+      "false_alerts_per_hour": 1.49,
       "median_lead_time_s": 249.0,
       "detected_events": 39,
       "truth_conflict_events": 39
@@ -34,9 +35,9 @@
       "detected_events": 39,
       "truth_conflict_events": 39,
       "vs_deterministic": {
-        "precision_delta": -0.163,
-        "ci95_low": -0.2302,
-        "ci95_high": -0.1056,
+        "precision_delta": -0.1466,
+        "ci95_low": -0.2092,
+        "ci95_high": -0.0936,
         "excludes_zero": true,
         "iterations": 10000
       }
@@ -53,9 +54,9 @@
       "detected_events": 39,
       "truth_conflict_events": 39,
       "vs_deterministic": {
-        "precision_delta": -0.1496,
-        "ci95_low": -0.2151,
-        "ci95_high": -0.0935,
+        "precision_delta": -0.1332,
+        "ci95_low": -0.1946,
+        "ci95_high": -0.081,
         "excludes_zero": true,
         "iterations": 10000
       }
@@ -72,9 +73,9 @@
       "detected_events": 39,
       "truth_conflict_events": 39,
       "vs_deterministic": {
-        "precision_delta": -0.1353,
-        "ci95_low": -0.1994,
-        "ci95_high": -0.0815,
+        "precision_delta": -0.1189,
+        "ci95_low": -0.1764,
+        "ci95_high": -0.0691,
         "excludes_zero": true,
         "iterations": 10000
       }
@@ -91,9 +92,9 @@
       "detected_events": 39,
       "truth_conflict_events": 39,
       "vs_deterministic": {
-        "precision_delta": -0.12,
-        "ci95_low": -0.1811,
-        "ci95_high": -0.0692,
+        "precision_delta": -0.1037,
+        "ci95_low": -0.1586,
+        "ci95_high": -0.0566,
         "excludes_zero": true,
         "iterations": 10000
       }
@@ -110,9 +111,9 @@
       "detected_events": 39,
       "truth_conflict_events": 39,
       "vs_deterministic": {
-        "precision_delta": -0.067,
-        "ci95_low": -0.115,
-        "ci95_high": -0.0276,
+        "precision_delta": -0.0506,
+        "ci95_low": -0.0917,
+        "ci95_high": -0.0171,
         "excludes_zero": true,
         "iterations": 10000
       }
@@ -121,17 +122,17 @@
       "threshold": 0.5,
       "detector": "probabilistic p>=0.5",
       "recall": 1.0,
-      "precision": 0.6094,
-      "alerts_raised": 64,
-      "false_alerts": 25,
-      "false_alerts_per_hour": 1.2,
+      "precision": 0.5909,
+      "alerts_raised": 66,
+      "false_alerts": 27,
+      "false_alerts_per_hour": 1.3,
       "median_lead_time_s": 249.0,
       "detected_events": 39,
       "truth_conflict_events": 39,
       "vs_deterministic": {
-        "precision_delta": 0.0358,
-        "ci95_low": 0.0079,
-        "ci95_high": 0.0762,
+        "precision_delta": 0.0338,
+        "ci95_low": 0.0074,
+        "ci95_high": 0.0724,
         "excludes_zero": true,
         "iterations": 10000
       }
@@ -139,18 +140,18 @@
     {
       "threshold": 0.7,
       "detector": "probabilistic p>=0.7",
-      "recall": 0.9744,
+      "recall": 1.0,
       "precision": 0.7091,
       "alerts_raised": 55,
       "false_alerts": 16,
       "false_alerts_per_hour": 0.77,
       "median_lead_time_s": 234.0,
-      "detected_events": 38,
+      "detected_events": 39,
       "truth_conflict_events": 39,
       "vs_deterministic": {
-        "precision_delta": 0.1356,
-        "ci95_low": 0.0694,
-        "ci95_high": 0.2127,
+        "precision_delta": 0.1519,
+        "ci95_low": 0.0839,
+        "ci95_high": 0.2321,
         "excludes_zero": true,
         "iterations": 10000
       }

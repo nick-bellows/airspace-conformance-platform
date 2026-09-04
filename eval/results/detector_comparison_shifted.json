@@ -1,26 +1,26 @@
 {
   "meta": {
-    "generated_at": "2026-08-17T02:18:39.775763+00:00",
+    "generated_at": "2026-09-04T19:14:16.648336+00:00",
     "seed": 20260815,
     "scenarios": 120,
     "generated_scenarios": 120,
     "simulated_hours": 30.0,
     "scenario_set_sha256_16": "c973a5d83326c7ed",
     "generator_version": "acp-gen-v1",
-    "detector_version": "acp-separation-v1",
+    "detector_version": "acp-separation-v2",
     "family": "shifted"
   },
   "rows": [
     {
       "threshold": null,
       "detector": "deterministic",
-      "recall": 0.9333,
+      "recall": 0.9667,
       "precision": 0.4,
       "alerts_raised": 70,
       "false_alerts": 42,
       "false_alerts_per_hour": 1.4,
-      "median_lead_time_s": 165.0,
-      "detected_events": 28,
+      "median_lead_time_s": 155.0,
+      "detected_events": 29,
       "truth_conflict_events": 30
     },
     {
@@ -102,13 +102,13 @@
     {
       "threshold": 0.35,
       "detector": "probabilistic p>=0.35",
-      "recall": 0.9333,
+      "recall": 0.9667,
       "precision": 0.3784,
       "alerts_raised": 74,
       "false_alerts": 46,
       "false_alerts_per_hour": 1.53,
-      "median_lead_time_s": 165.0,
-      "detected_events": 28,
+      "median_lead_time_s": 155.0,
+      "detected_events": 29,
       "truth_conflict_events": 30,
       "vs_deterministic": {
         "precision_delta": -0.0216,
@@ -121,13 +121,13 @@
     {
       "threshold": 0.5,
       "detector": "probabilistic p>=0.5",
-      "recall": 0.9333,
+      "recall": 0.9667,
       "precision": 0.4058,
       "alerts_raised": 69,
       "false_alerts": 41,
       "false_alerts_per_hour": 1.37,
-      "median_lead_time_s": 165.0,
-      "detected_events": 28,
+      "median_lead_time_s": 155.0,
+      "detected_events": 29,
       "truth_conflict_events": 30,
       "vs_deterministic": {
         "precision_delta": 0.0058,
@@ -140,13 +140,13 @@
     {
       "threshold": 0.7,
       "detector": "probabilistic p>=0.7",
-      "recall": 0.9333,
+      "recall": 0.9667,
       "precision": 0.459,
       "alerts_raised": 61,
       "false_alerts": 33,
       "false_alerts_per_hour": 1.1,
       "median_lead_time_s": 155.0,
-      "detected_events": 28,
+      "detected_events": 29,
       "truth_conflict_events": 30,
       "vs_deterministic": {
         "precision_delta": 0.059,

@@ -18,7 +18,8 @@
 # Jobs are split rather than chained into one so a failure names itself in the
 # checks list: "types" failing is a different signal from "contracts" failing.
 #
-# Ordering note: nothing here uses `needs:` except `publish`. Jobs run in
+# Ordering note: only `publish` and the four jobs that consume the built
+# image artefact use `needs:`. Everything else runs in
 # parallel because a lint failure and a test failure are independent facts and
 # a developer wants both in one run, not the second one an hour later. `publish`
 # is the exception, because pushing an image that failed its own tests is the

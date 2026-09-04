@@ -82,7 +82,11 @@ all = [
 ]
 
 [project.scripts]
-acp-sim = "acp.sim.cli:main"
+# There is deliberately no `acp-sim`. One was declared against `acp.sim.cli`,
+# a module that never existed, so `pip install` produced a shim that failed on
+# first use. The simulator has no separate CLI: it is driven by the feed
+# service (`acp-feed --scenario ...`), which is the only way it runs in
+# production anyway. `test_entrypoints.py` now imports every declared target.
 acp-feed = "acp.services.feed.__main__:main"
 acp-track = "acp.services.track.__main__:main"
 acp-conformance = "acp.services.conformance.__main__:main"

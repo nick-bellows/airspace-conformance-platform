@@ -470,3 +470,39 @@ def test_the_demo_renders_from_the_committed_scenario() -> None:
     source = (REPO_ROOT / "scripts/make_demo.py").read_text(encoding="utf-8")
     for component in ("Simulation", "TrackEstimator", "SeparationMonitor", "load_scenario"):
         assert component in source, f"the demo no longer uses {component}"
+
+
+def test_the_gitleaks_allowlist_matches_against_the_source_line() -> None:
+    """`regexTarget = "line"` is what makes the allowlist regexes work at all.
+
+    Without it gitleaks matches allowlist patterns against the extracted
+    *secret* rather than the whole line. Every pattern in this allowlist is
+    line-shaped, so none of them could fire, and the scan would pass only
+    because no default rule happens to catch a three-character password -- an
+    unearned green.
+
+    The config comment claimed this test existed before the test did, which is
+    precisely the failure the definition of done forbids: a claim in prose that
+    nothing checks.
+    """
+    config = (Path(__file__).resolve().parents[2] / ".gitleaks.toml").read_text(encoding="utf-8")
+    assert re.search(r'^\s*regexTarget\s*=\s*"line"', config, re.MULTILINE), (
+        '.gitleaks.toml must set regexTarget = "line"; without it every allowlist '
+        "regex below it is inert decoration"
+    )
+
+
+def test_the_declared_licence_has_a_file() -> None:
+    """`pyproject.toml` and the README both say MIT; a reader needs the text.
+
+    An external review found the claim with no `LICENSE` file behind it, which
+    leaves the terms legally ambiguous and stops GitHub showing a licence at
+    all.
+    """
+    root = Path(__file__).resolve().parents[2]
+    licence = root / "LICENSE"
+    assert licence.exists(), "pyproject declares a licence but no LICENSE file exists"
+    text = licence.read_text(encoding="utf-8")
+    assert "MIT License" in text
+    declared = (root / "pyproject.toml").read_text(encoding="utf-8")
+    assert 'license = { text = "MIT" }' in declared, "LICENSE and pyproject must agree"

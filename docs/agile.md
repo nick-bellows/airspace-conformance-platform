@@ -115,7 +115,7 @@ prevent.
 
 | Risk | Why accepted |
 | --- | --- |
-| Conflict-detection precision is 0.57 | Published prominently rather than buried. The fix is probabilistic detection, which is scoped as future work |
+| Conflict-detection precision is around 0.56 | Published prominently rather than buried. The assumed fix — probabilistic detection — was built and did not replicate across scenario families ([ADR 0012](adr/0012-probabilistic-conflict-detection.md)); precision is now published as a function of the lookahead window ([ADR 0013](adr/0013-lookahead-is-an-operating-point.md)) rather than as a single figure |
 | Track filter state is lost on partition reassignment | Costs seconds of convergence; the alternative is an inter-replica protocol and a new consistency problem |
 | No real-data validation | Would remove the one non-circular measurement in the repository ([ADR 0002](adr/0002-synthetic-traffic-only.md)) |
 

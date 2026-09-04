@@ -1,10 +1,10 @@
 {
   "meta": {
-    "generated_at": "2026-08-17T23:59:18.334990+00:00",
+    "generated_at": "2026-09-04T18:59:31.229770+00:00",
     "seed": 20260815,
     "scenarios": 120,
     "generator_version": "acp-gen-v1",
-    "detector_version": "acp-separation-v1",
+    "detector_version": "acp-separation-v2",
     "default_lookahead_s": 300.0
   },
   "nominal": [
@@ -55,10 +55,10 @@
     {
       "lookahead_s": 300.0,
       "recall": 1.0,
-      "precision": 0.5735,
-      "alerts_raised": 68,
-      "false_alerts": 29,
-      "false_alerts_per_hour": 1.4,
+      "precision": 0.5571,
+      "alerts_raised": 70,
+      "false_alerts": 31,
+      "false_alerts_per_hour": 1.49,
       "median_lead_time_s": 249.0,
       "detected_events": 39,
       "truth_conflict_events": 39
@@ -67,57 +67,57 @@
   "shifted": [
     {
       "lookahead_s": 60.0,
-      "recall": 0.8667,
-      "precision": 0.7105,
-      "alerts_raised": 38,
+      "recall": 0.9667,
+      "precision": 0.7179,
+      "alerts_raised": 39,
       "false_alerts": 11,
       "false_alerts_per_hour": 0.37,
-      "median_lead_time_s": 59.0,
-      "detected_events": 26,
+      "median_lead_time_s": 58.0,
+      "detected_events": 29,
       "truth_conflict_events": 30
     },
     {
       "lookahead_s": 120.0,
-      "recall": 0.9,
-      "precision": 0.6512,
-      "alerts_raised": 43,
-      "false_alerts": 15,
-      "false_alerts_per_hour": 0.5,
-      "median_lead_time_s": 100.0,
-      "detected_events": 27,
+      "recall": 0.9667,
+      "precision": 0.6364,
+      "alerts_raised": 44,
+      "false_alerts": 16,
+      "false_alerts_per_hour": 0.53,
+      "median_lead_time_s": 99.0,
+      "detected_events": 29,
       "truth_conflict_events": 30
     },
     {
       "lookahead_s": 180.0,
-      "recall": 0.9,
+      "recall": 0.9667,
       "precision": 0.549,
       "alerts_raised": 51,
       "false_alerts": 23,
       "false_alerts_per_hour": 0.77,
-      "median_lead_time_s": 125.0,
-      "detected_events": 27,
+      "median_lead_time_s": 109.0,
+      "detected_events": 29,
       "truth_conflict_events": 30
     },
     {
       "lookahead_s": 240.0,
-      "recall": 0.9333,
+      "recall": 0.9667,
       "precision": 0.4667,
       "alerts_raised": 60,
       "false_alerts": 32,
       "false_alerts_per_hour": 1.07,
-      "median_lead_time_s": 165.0,
-      "detected_events": 28,
+      "median_lead_time_s": 155.0,
+      "detected_events": 29,
       "truth_conflict_events": 30
     },
     {
       "lookahead_s": 300.0,
-      "recall": 0.9333,
+      "recall": 0.9667,
       "precision": 0.4,
       "alerts_raised": 70,
       "false_alerts": 42,
       "false_alerts_per_hour": 1.4,
-      "median_lead_time_s": 165.0,
-      "detected_events": 28,
+      "median_lead_time_s": 155.0,
+      "detected_events": 29,
       "truth_conflict_events": 30
     }
   ]

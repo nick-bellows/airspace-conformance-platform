@@ -340,44 +340,48 @@ percentile matters more than the median: it is the bad case.
 
 ## Interpretation
 
-**Recall of {summary["recall"]} is weaker evidence than it looks.** The generated
-encounters are mostly constant-velocity approaches developing over four to seven
-minutes, and the detector extrapolates at constant velocity over a
-{settings["lookahead_s"]:.0f} s window. It is being tested largely on the case its
-model fits exactly. The hard case -- a conflict created by a late, unforecast
-turn -- is under-represented, because the generator's manoeuvres fire between 60
-and 240 seconds, usually before the encounter geometry matures. Read this number
-as "the geometry is implemented correctly", not as "this detector never misses".
+**Recall of {summary["recall"]} is weaker evidence than it looks, but not for the
+reason this report used to give.** It argued that the generated encounters are
+mostly constant-velocity and therefore flatter a constant-velocity detector.
+That was an argument, not a measurement, and measuring it refuted it:
+`manoeuvre_sensitivity.md` sweeps manoeuvre density with every other parameter
+held fixed and finds recall stays at 1.00, and is *lowest* when nothing
+manoeuvres at all. The detector re-evaluates every second against a
+{settings["lookahead_s"]:.0f} s horizon, so a turn only has to be observed, not forecast.
 
-**Precision of {summary["precision"]} is the real result, and it is not good.**
+Two real limits remain. The first is sample size: {summary["truth_conflict_events"]}
+true events, so a single miss moves recall by more than two points. The second is
+sharper and was found by an external review after this number had been published
+for weeks -- the detector was, until `acp-separation-v2`, evaluating the vertical
+standard only at horizontal closest approach, and so could miss a pair that
+passes inside the lateral standard while still vertically clear and then
+descends through 1000 ft before separating. **This scenario set never produced
+that geometry**, which is why recall stayed at 1.00 while the bug was live. Read
+recall as "no miss in this population", never as "this detector cannot miss".
+
+**Precision of {summary["precision"]} is an operating point, not a defect.**
 {summary["false_alerts"]} of {summary["alerts_raised"]} alerts were raised for pairs
-that never actually lost separation. The cause is structural rather than a
-defect: the detector applies a hard threshold to a point estimate. A pair
-predicted to miss by 4.9 NM alerts and a pair predicted at 5.1 NM does not,
-while the velocity estimate driving that prediction carries a couple of knots of
-noise -- which over {settings["lookahead_s"]:.0f} s of extrapolation is more than a
-nautical mile of position uncertainty. Encounters engineered to pass at 5-6 NM
-therefore fall either side of the line close to arbitrarily.
+that never actually lost separation -- but `analyse_false_alerts.py` shows the
+median one is a pair that genuinely closed to 5.52 NM against a 5 NM standard, at
+a predicted time-to-closest-approach pinned against the
+{settings["lookahead_s"]:.0f} s ceiling. They are mostly the cost of extrapolating
+constant velocity that far, not wild errors.
 
-Three changes would improve it, in descending order of value:
+`lookahead_tradeoff.md` shows precision as a function of that window, and it
+replicates on both scenario families. The default is unchanged because lead time
+is the product and a shorter window costs a real detection on shifted traffic.
 
-1. **Probabilistic detection.** The Kalman filter already maintains a position
-   covariance. Propagating it through the extrapolation and alerting on the
-   *probability* of violation, rather than thresholding a point estimate, is the
-   principled fix and would let the threshold be set by an acceptable false
-   alert rate instead of by geometry.
-2. **Persistence.** Require the same pair to be detected on several consecutive
-   scans before raising. Cheap, and removes alerts caused by one noisy estimate.
-   The alert lifecycle already has the hysteresis machinery for it, applied on
-   clearing but not on raising.
-3. **Intent.** Flight plans would remove the constant-velocity assumption
-   entirely. Unavailable here by construction -- the simulator's plans are never
-   published -- and the largest single source of remaining error.
+**The diagnosis this report used to give was tested and found insufficient.** It
+attributed precision to thresholding a point estimate, so the principled fix was
+built -- probabilistic detection using the filter's covariance. It wins on the
+family it was tuned against and its advantage vanishes on shifted traffic
+(ADR 0012). The deterministic detector remains the default.
 
 **{summary["false_alerts_per_hour"]} false alerts per airspace hour** is the number
-to quote operationally: roughly one spurious alert per hour of traffic. That is
-too many for anyone to use, and improving it is the obvious next piece of work
-on this detector.
+to quote operationally. It is too high for an operator, and the honest statement
+of why is that a five-minute constant-velocity extrapolation cannot be more
+precise than this against a step-function standard -- not that a tuning pass was
+skipped.
 
 ## What this does not measure
 

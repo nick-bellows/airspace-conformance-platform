@@ -78,7 +78,7 @@ _log = get_logger(__name__)
 
 # Bump when the detection geometry or the defaults change. A bump invalidates
 # every committed conflict-detection report.
-DETECTOR_VERSION = "acp-separation-v1"
+DETECTOR_VERSION = "acp-separation-v2"
 
 #: En-route separation standards. Terminal airspace uses tighter ones, and
 #: oceanic airspace much looser; a real system selects per airspace class.
@@ -96,6 +96,51 @@ MIN_UPDATES_FOR_CONFLICT = 5
 #: standard. At 300 NM the distortion is about 0.17 NM on a 4 NM gap; beyond
 #: that it grows quickly. Exceeding this logs a warning rather than failing.
 MAX_PICTURE_RADIUS_NM = 300.0
+
+
+def _quadratic_below(a: float, b: float, c: float) -> tuple[float, float] | None:
+    """The open interval of `t` where `a t^2 + b t + c < 0`, or `None`.
+
+    Used for the horizontal standard: squared separation is a quadratic in
+    time, so the times at which the pair is closer than the standard are the
+    roots of that quadratic minus the threshold.
+    """
+    if abs(a) < 1e-12:
+        if abs(b) < 1e-12:
+            # Constant separation for all time.
+            return (-math.inf, math.inf) if c < 0.0 else None
+        root = -c / b
+        return (-math.inf, root) if b > 0.0 else (root, math.inf)
+    discriminant = b * b - 4.0 * a * c
+    if discriminant <= 0.0:
+        # Never strictly inside the threshold: the parabola only touches, or
+        # misses entirely.
+        return None
+    root = math.sqrt(discriminant)
+    return ((-b - root) / (2.0 * a), (-b + root) / (2.0 * a))
+
+
+def _linear_within(offset: float, rate: float, limit: float) -> tuple[float, float] | None:
+    """The open interval of `t` where `|offset + rate t| < limit`, or `None`.
+
+    Used for the vertical standard, where separation changes linearly.
+    """
+    if abs(rate) < 1e-12:
+        return (-math.inf, math.inf) if abs(offset) < limit else None
+    low = (-limit - offset) / rate
+    high = (limit - offset) / rate
+    return (low, high) if low <= high else (high, low)
+
+
+def _overlap(
+    first: tuple[float, float] | None, second: tuple[float, float] | None, horizon: float
+) -> tuple[float, float] | None:
+    """Intersect two open intervals with the lookahead window `[0, horizon]`."""
+    if first is None or second is None:
+        return None
+    start = max(first[0], second[0], 0.0)
+    end = min(first[1], second[1], horizon)
+    return (start, end) if end > start else None
 
 
 @dataclass(frozen=True, slots=True)
@@ -403,17 +448,53 @@ class SeparationMonitor:
             # which correctly still fires if they are currently too close.
             t_cpa = max(0.0, min(self._lookahead_s, t_cpa))
 
-        min_horizontal = math.hypot(rel_east + rel_v_east * t_cpa, rel_north + rel_v_north * t_cpa)
+        rel_alt = second.altitude_ft - first.altitude_ft
         rel_v_alt_ft_s = (second.v_alt_fpm - first.v_alt_fpm) / 60.0
-        min_vertical = abs((second.altitude_ft - first.altitude_ft) + rel_v_alt_ft_s * t_cpa)
 
-        probability = self._probability(first, second, min_horizontal, min_vertical, t_cpa)
+        # A conflict is both standards breached *at the same moment*, and that
+        # moment is not necessarily horizontal closest approach. Evaluating the
+        # vertical standard only at horizontal CPA misses a pair that passes
+        # inside 5 NM while still vertically clear and then descends through
+        # 1000 ft before separating -- a real loss of separation, found by an
+        # external review after every earlier test agreed on the wrong answer.
+        # So: solve for the interval in which each standard is breached and ask
+        # whether those intervals overlap.
+        horizontal_window = _quadratic_below(
+            closing_speed_sq,
+            2.0 * (rel_east * rel_v_east + rel_north * rel_v_north),
+            rel_east**2 + rel_north**2 - self._horizontal_nm**2,
+        )
+        vertical_window = _linear_within(rel_alt, rel_v_alt_ft_s, self._vertical_ft)
+        window = _overlap(horizontal_window, vertical_window, self._lookahead_s)
+
+        def geometry_at(t: float) -> tuple[float, float]:
+            return (
+                math.hypot(rel_east + rel_v_east * t, rel_north + rel_v_north * t),
+                abs(rel_alt + rel_v_alt_ft_s * t),
+            )
+
+        if window is None:
+            # No moment breaches both. Report the geometry at closest approach
+            # so the probabilistic detector can still weigh a near miss.
+            t_report = t_cpa
+            min_horizontal, min_vertical = geometry_at(t_report)
+        else:
+            # Report the worst of each standard *while the conflict exists*.
+            # Horizontal is a parabola, so its minimum is the clamped CPA;
+            # vertical is linear, so its minimum is at one end of the window.
+            start, end = window
+            t_report = max(start, min(end, t_cpa))
+            min_horizontal = geometry_at(t_report)[0]
+            min_vertical = min(geometry_at(start)[1], geometry_at(end)[1])
+
+        probability = self._probability(first, second, min_horizontal, min_vertical, t_report)
         if probability is None:
-            # Both standards, at the same moment. Either alone is routine.
-            if min_horizontal >= self._horizontal_nm or min_vertical >= self._vertical_ft:
+            if window is None:
                 return None
         elif probability < (self._probability_threshold or 0.0):
             return None
+
+        t_cpa = t_report
 
         return Conflict(
             probability=probability,

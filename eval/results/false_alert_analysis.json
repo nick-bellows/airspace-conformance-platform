@@ -1,38 +1,38 @@
 {
   "summary": {
-    "alerts": 68,
+    "alerts": 70,
     "true_alerts": 39,
-    "false_alerts": 29,
+    "false_alerts": 31,
     "false_alert_true_min_horizontal_nm": {
-      "count": 29,
+      "count": 31,
       "median": 5.52,
-      "p10": 1.7,
-      "p90": 24.51,
+      "p10": 2.96,
+      "p90": 24.18,
       "min": 0.66,
       "max": 25.96
     },
     "false_alert_predicted_horizontal_nm": {
-      "count": 29,
+      "count": 31,
       "median": 4.75,
-      "p10": 1.56,
-      "p90": 4.99,
+      "p10": 2.35,
+      "p90": 4.98,
       "min": 0.44,
       "max": 5.0
     },
     "false_alert_horizontal_error_nm": {
-      "count": 29,
+      "count": 31,
       "median": 0.92,
-      "p10": -0.18,
-      "p90": 20.51,
+      "p10": -1.15,
+      "p90": 19.6,
       "min": -2.03,
       "max": 21.01
     },
     "false_alert_time_to_cpa_s": {
-      "count": 29,
-      "median": 296.45,
-      "p10": 221.11,
+      "count": 31,
+      "median": 294.32,
+      "p10": 238.33,
       "p90": 300.0,
-      "min": 0.0,
+      "min": 59.8,
       "max": 300.0
     },
     "true_alert_horizontal_error_nm": {
@@ -43,11 +43,11 @@
       "min": -4.91,
       "max": 1.65
     },
-    "false_alerts_within_two_standards": 19,
-    "false_alerts_breaching_laterally_but_not_vertically": 8,
+    "false_alerts_within_two_standards": 21,
+    "false_alerts_breaching_laterally_but_not_vertically": 9,
     "family": "nominal",
     "seed": 20260815,
-    "generated_at": "2026-08-17T23:43:39.515392+00:00"
+    "generated_at": "2026-09-04T19:03:58.590975+00:00"
   },
   "false_alerts": [
     {
@@ -63,13 +63,25 @@
       "true_vertical_at_closest_ft": 886.6
     },
     {
+      "scenario_id": "gen-nominal-enc-0003",
+      "pair": [
+        "5aad51",
+        "8adbc2"
+      ],
+      "predicted_horizontal_nm": 4.175,
+      "predicted_vertical_ft": 995.3,
+      "time_to_cpa_s": 264.9,
+      "true_min_horizontal_nm": 3.024,
+      "true_vertical_at_closest_ft": 1110.1
+    },
+    {
       "scenario_id": "gen-nominal-enc-0005",
       "pair": [
         "1eb320",
         "6c67ac"
       ],
       "predicted_horizontal_nm": 0.441,
-      "predicted_vertical_ft": 963.5,
+      "predicted_vertical_ft": 961.5,
       "time_to_cpa_s": 278.6,
       "true_min_horizontal_nm": 20.04,
       "true_vertical_at_closest_ft": 964.6
@@ -81,7 +93,7 @@
         "d458e9"
       ],
       "predicted_horizontal_nm": 0.837,
-      "predicted_vertical_ft": 970.4,
+      "predicted_vertical_ft": 969.1,
       "time_to_cpa_s": 296.4,
       "true_min_horizontal_nm": 0.656,
       "true_vertical_at_closest_ft": 1082.1
@@ -93,7 +105,7 @@
         "f1aedf"
       ],
       "predicted_horizontal_nm": 4.994,
-      "predicted_vertical_ft": 472.1,
+      "predicted_vertical_ft": 472.0,
       "time_to_cpa_s": 238.3,
       "true_min_horizontal_nm": 2.964,
       "true_vertical_at_closest_ft": 1566.9
@@ -117,7 +129,7 @@
         "c0c6b3"
       ],
       "predicted_horizontal_nm": 4.776,
-      "predicted_vertical_ft": 101.1,
+      "predicted_vertical_ft": 100.8,
       "time_to_cpa_s": 298.2,
       "true_min_horizontal_nm": 25.313,
       "true_vertical_at_closest_ft": 94.4
@@ -128,9 +140,9 @@
         "aefdb6",
         "d3a47b"
       ],
-      "predicted_horizontal_nm": 1.557,
-      "predicted_vertical_ft": 984.3,
-      "time_to_cpa_s": 209.1,
+      "predicted_horizontal_nm": 3.407,
+      "predicted_vertical_ft": 999.6,
+      "time_to_cpa_s": 246.5,
       "true_min_horizontal_nm": 1.559,
       "true_vertical_at_closest_ft": 1018.9
     },
@@ -153,7 +165,7 @@
         "eb1ff4"
       ],
       "predicted_horizontal_nm": 2.35,
-      "predicted_vertical_ft": 962.0,
+      "predicted_vertical_ft": 961.2,
       "time_to_cpa_s": 233.1,
       "true_min_horizontal_nm": 8.024,
       "true_vertical_at_closest_ft": 995.9
@@ -165,7 +177,7 @@
         "d6c395"
       ],
       "predicted_horizontal_nm": 4.985,
-      "predicted_vertical_ft": 840.4,
+      "predicted_vertical_ft": 840.0,
       "time_to_cpa_s": 260.6,
       "true_min_horizontal_nm": 5.321,
       "true_vertical_at_closest_ft": 879.6
@@ -201,10 +213,22 @@
         "2c0d1d"
       ],
       "predicted_horizontal_nm": 2.848,
-      "predicted_vertical_ft": 413.0,
+      "predicted_vertical_ft": 411.1,
       "time_to_cpa_s": 294.3,
       "true_min_horizontal_nm": 3.098,
       "true_vertical_at_closest_ft": 1583.3
+    },
+    {
+      "scenario_id": "gen-nominal-enc-0032",
+      "pair": [
+        "4a3fa0",
+        "a47cc8"
+      ],
+      "predicted_horizontal_nm": 4.313,
+      "predicted_vertical_ft": 996.2,
+      "time_to_cpa_s": 268.4,
+      "true_min_horizontal_nm": 7.146,
+      "true_vertical_at_closest_ft": 1079.4
     },
     {
       "scenario_id": "gen-nominal-enc-0047",
@@ -213,7 +237,7 @@
         "e5888f"
       ],
       "predicted_horizontal_nm": 4.0,
-      "predicted_vertical_ft": 688.2,
+      "predicted_vertical_ft": 687.0,
       "time_to_cpa_s": 287.0,
       "true_min_horizontal_nm": 24.508,
       "true_vertical_at_closest_ft": 656.8
@@ -225,7 +249,7 @@
         "d59883"
       ],
       "predicted_horizontal_nm": 3.867,
-      "predicted_vertical_ft": 901.4,
+      "predicted_vertical_ft": 901.3,
       "time_to_cpa_s": 300.0,
       "true_min_horizontal_nm": 19.415,
       "true_vertical_at_closest_ft": 900.4
@@ -249,7 +273,7 @@
         "d796b4"
       ],
       "predicted_horizontal_nm": 4.602,
-      "predicted_vertical_ft": 784.9,
+      "predicted_vertical_ft": 784.6,
       "time_to_cpa_s": 277.8,
       "true_min_horizontal_nm": 5.519,
       "true_vertical_at_closest_ft": 792.7
@@ -273,7 +297,7 @@
         "7d0220"
       ],
       "predicted_horizontal_nm": 4.964,
-      "predicted_vertical_ft": 985.3,
+      "predicted_vertical_ft": 984.5,
       "time_to_cpa_s": 260.0,
       "true_min_horizontal_nm": 6.188,
       "true_vertical_at_closest_ft": 1050.2
@@ -297,7 +321,7 @@
         "43e3ea"
       ],
       "predicted_horizontal_nm": 4.734,
-      "predicted_vertical_ft": 601.2,
+      "predicted_vertical_ft": 600.7,
       "time_to_cpa_s": 300.0,
       "true_min_horizontal_nm": 14.646,
       "true_vertical_at_closest_ft": 546.4
@@ -321,7 +345,7 @@
         "b8d51f"
       ],
       "predicted_horizontal_nm": 4.744,
-      "predicted_vertical_ft": 982.1,
+      "predicted_vertical_ft": 981.4,
       "time_to_cpa_s": 270.3,
       "true_min_horizontal_nm": 5.096,
       "true_vertical_at_closest_ft": 956.7
@@ -332,9 +356,9 @@
         "56aef9",
         "f7f844"
       ],
-      "predicted_horizontal_nm": 4.058,
-      "predicted_vertical_ft": 998.3,
-      "time_to_cpa_s": 0.0,
+      "predicted_horizontal_nm": 4.862,
+      "predicted_vertical_ft": 998.8,
+      "time_to_cpa_s": 59.8,
       "true_min_horizontal_nm": 3.258,
       "true_vertical_at_closest_ft": 1000.0
     },
@@ -357,7 +381,7 @@
         "d1da0e"
       ],
       "predicted_horizontal_nm": 4.675,
-      "predicted_vertical_ft": 949.5,
+      "predicted_vertical_ft": 948.9,
       "time_to_cpa_s": 221.1,
       "true_min_horizontal_nm": 4.825,
       "true_vertical_at_closest_ft": 1405.8
@@ -369,7 +393,7 @@
         "9c02ff"
       ],
       "predicted_horizontal_nm": 1.627,
-      "predicted_vertical_ft": 977.6,
+      "predicted_vertical_ft": 962.3,
       "time_to_cpa_s": 253.3,
       "true_min_horizontal_nm": 1.703,
       "true_vertical_at_closest_ft": 2073.5
@@ -393,7 +417,7 @@
         "6013ad"
       ],
       "predicted_horizontal_nm": 3.087,
-      "predicted_vertical_ft": 982.0,
+      "predicted_vertical_ft": 980.8,
       "time_to_cpa_s": 294.3,
       "true_min_horizontal_nm": 3.146,
       "true_vertical_at_closest_ft": 1044.9

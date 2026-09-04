@@ -76,7 +76,7 @@ alerts.
 From `eval/results/conflict_detection.md`, and stated here so they are not
 only visible to someone who opens the report:
 
-- **Precision is around 0.57.** Roughly two in five alerts concern a pair that
+- **Precision is around 0.56.** Roughly two in five alerts concern a pair that
   never actually loses separation. The cause is thresholding a point estimate: a
   predicted 4.9 NM miss alerts and a 5.1 NM miss does not, while the velocity
   estimate behind that prediction carries enough noise to move the answer across
@@ -88,14 +88,17 @@ only visible to someone who opens the report:
   Examining the alerts rather than theorising about them found the median false
   alert is a pair that genuinely closed to 5.52 NM against a 5 NM standard, at a
   predicted time-to-CPA of 296 s against a 300 s ceiling. Shortening the
-  lookahead to 120 s takes precision to 0.87 nominal and 0.65 shifted. The 0.57
+  lookahead to 120 s takes precision to 0.87 nominal and 0.64 shifted. The 0.56
   headline is one point on a curve, published in
   [`lookahead_tradeoff.md`](../eval/results/lookahead_tradeoff.md), and quoting
   it alone was the actual reporting defect.
-- **The shorter lookahead is not a free win, which is why the default stands.**
-  On shifted traffic a 120 s window misses a loss of separation that the 300 s
-  window catches, and halves the median warning. Lead time is what the system is
-  for.
+- **The shorter lookahead costs lead time, and that alone is why the default
+  stands.** It used to cost recall too — that was an artefact of the
+  interval-overlap defect, and once fixed, shifted recall is flat at 0.967 across
+  every window in the sweep. The argument was withdrawn rather than restated
+  ([ADR 0013](adr/0013-lookahead-is-an-operating-point.md)). A 120 s window still
+  halves the median warning from 249 s to 120 s, and warning time is what the
+  system is for.
 - **The probabilistic detector's covariance model is isotropic.** It treats each
   track's horizontal uncertainty as circular when the filter's is mildly
   elliptical, and does not propagate turn rate, so a turning aircraft's future
@@ -118,6 +121,16 @@ only visible to someone who opens the report:
 - **Recall remains a small-sample figure.** 27 to 44 real events per
   configuration, so one detection either way moves it by two to four points. It
   is not measured precisely enough to distinguish 1.00 from 0.97.
+- **Recall of 1.00 held for weeks while the detector had a real blind spot.**
+  Until `acp-separation-v2` the detector evaluated the vertical standard only at
+  horizontal closest approach, so it silently missed pairs that pass inside the
+  lateral standard while vertically clear and then converge vertically before
+  separating. Nominal recall never moved, because **the scenario generator never
+  produced that geometry**. Fixing it raised shifted recall from 0.933 to 0.967.
+  The general lesson is worth more than the fix: a metric is only as strong as
+  the adversariality of the population it was measured on, and confidence
+  intervals do not repair a test set that never asks the hard question.
+  [ADR 0014](adr/0014-conflict-is-an-interval-not-an-instant.md).
 - **The tracking filter is constant-velocity**, so it lags during turns. That is
   deliberate ([ADR 0006](adr/0006-constant-velocity-filter.md)) because the lag
   is the manoeuvre signal, but it does mean reported position is least accurate

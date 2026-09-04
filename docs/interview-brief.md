@@ -31,8 +31,10 @@ screen went well.
 ### What a screen actually asks
 
 **"How long did this take?"**
-Two days of concentrated work, and I used AI heavily — that's written up in the
-repo rather than left for someone to guess. The speed isn't the interesting
+Two concentrated days for the initial build — M0 through M6 — and then about
+three weeks of evaluation, external review and remediation on top, which the
+commit history shows plainly. I used AI heavily throughout; that's written up in
+the repo rather than left for someone to guess. The speed isn't the interesting
 part. The interesting part is that the verification discipline held anyway: no
 number appears in the documentation without a committed script that reproduces
 it, and a rule that nothing ships without being watched to fail once. AI makes
@@ -101,7 +103,7 @@ flag rather than a boast.
 > against ground truth from the simulator that no part of the pipeline can see,
 > so the measurement isn't circular even though the traffic is synthetic. It
 > catches every real loss of separation with a median of four minutes' warning —
-> and its precision is 0.57, which isn't good enough, and the README says so
+> and its precision is 0.56, which isn't good enough, and the README says so
 > above the good numbers.
 >
 > The repository also contains four things I believed, wrote down, and then
@@ -188,7 +190,7 @@ advisories is the wrong tool — you can't bound its failure mode, and the resid
 design exists precisely so failure is bounded. I used one heavily to *build* it,
 which is a different question, and that's written up separately.
 
-**"Precision of 0.57 seems bad."**
+**"Precision of 0.56 seems bad."**
 It is, and the story of finding out why is the thing I'd most want to be asked
 about. I thought I knew: the detector thresholds a point estimate, so a
 predicted 4.9 NM miss alerts and 5.1 NM doesn't. I built the principled fix — a
@@ -200,7 +202,7 @@ So I stopped guessing and looked at the alerts. The median "false" alert is a
 pair that genuinely closed to 5.52 NM against a 5 NM standard, raised at 296
 seconds against a 300-second ceiling. They're not errors, they're the cost of
 extrapolating constant velocity for five minutes. Halve the lookahead and
-precision goes to 0.87 — and that one replicates on both families. So 0.57 is
+precision goes to 0.87 — and that one replicates on both families. So 0.56 is
 an operating point, not a defect, and the real bug was quoting it without the
 lookahead attached.
 

@@ -288,3 +288,78 @@ def test_the_grid_finds_the_same_conflicts_as_an_exhaustive_search() -> None:
             exhaustive.update(c.key for c in monitor.scan([first, second]))
 
     assert found == exhaustive
+
+
+# --------------------------------------------------------------------------
+# Both standards must be breached *at the same moment* -- and "the same moment"
+# is not necessarily horizontal closest approach.
+# --------------------------------------------------------------------------
+
+
+def descending_pair(
+    *, separation_nm: float, altitude_gap_ft: float, descent_fpm: float
+) -> list[TrackUpdate]:
+    """Head-on, with the higher aircraft descending toward the lower one."""
+    west_lat, west_lon = 40.0, -75.0
+    east_lat, east_lon = destination_point(west_lat, west_lon, 90.0, separation_nm)
+    return [
+        a_track("trk-west", lat=west_lat, lon=west_lon, track_deg=90.0),
+        a_track(
+            "trk-east",
+            lat=east_lat,
+            lon=east_lon,
+            track_deg=270.0,
+            altitude_ft=35000.0 + altitude_gap_ft,
+            vertical_rate_fpm=-descent_fpm,
+        ),
+    ]
+
+
+def test_a_conflict_after_horizontal_closest_approach_is_still_a_conflict() -> None:
+    """The defect an external review found, which every earlier test missed.
+
+    Twelve miles apart, head-on at 450 kt each, 2000 ft apart with the higher
+    aircraft descending at 1000 fpm. Horizontal closest approach is at t=48s,
+    where the pair is still 1200 ft apart vertically -- so a detector that
+    evaluates the vertical standard *only at horizontal CPA* sees nothing.
+
+    But the pair stays inside 5 NM from roughly t=39s to t=67s, and drops below
+    1000 ft at t=60s. Between t=60s and t=67s both standards are breached at
+    the same moment, which is the definition of a conflict.
+
+    Requiring the horizontal-breach interval and the vertical-breach interval
+    to *overlap* is the correct test; evaluating a single instant is not.
+    """
+    conflicts = SeparationMonitor().scan(
+        descending_pair(separation_nm=12.0, altitude_gap_ft=2000.0, descent_fpm=1000.0)
+    )
+    assert len(conflicts) == 1, "a real simultaneous loss of separation was missed"
+    conflict = conflicts[0]
+    assert conflict.min_horizontal_nm < 5.0
+    assert conflict.min_vertical_ft < 1000.0
+
+
+def test_the_reported_moment_is_inside_the_overlap() -> None:
+    """An alert has to name a time at which the conflict actually exists."""
+    conflicts = SeparationMonitor().scan(
+        descending_pair(separation_nm=12.0, altitude_gap_ft=2000.0, descent_fpm=1000.0)
+    )
+    assert conflicts
+    # 5 NM at 900 kt closure is reached around t=39s; 1000 ft at 1000 fpm at
+    # t=60s. The overlap opens at 60s and the pair leaves 5 NM around t=67s.
+    assert 58.0 <= conflicts[0].time_to_cpa_s <= 69.0
+
+
+def test_a_descent_that_arrives_too_late_is_not_a_conflict() -> None:
+    """The converse, so the fix cannot pass by simply alerting more.
+
+    Same geometry, but descending slowly enough that the vertical standard is
+    still intact by the time the pair has passed and separated horizontally.
+    The intervals never overlap, so there is no conflict.
+    """
+    assert (
+        SeparationMonitor().scan(
+            descending_pair(separation_nm=12.0, altitude_gap_ft=2000.0, descent_fpm=120.0)
+        )
+        == []
+    )

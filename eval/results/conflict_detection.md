@@ -1,13 +1,13 @@
 # Conflict detection evaluation
 
-Generated: 2026-08-16T19:29:54.046579+00:00
+Generated: 2026-09-04T18:48:01.385489+00:00
 
 | Component | Version |
 | --- | --- |
 | Simulator | `acp-sim-v2` |
 | Scenario generator | `acp-gen-v1` |
 | Track filter | `acp-kf-cv-v1` |
-| Detector | `acp-separation-v1` |
+| Detector | `acp-separation-v2` |
 
 | Input | Value |
 | --- | --- |
@@ -26,10 +26,10 @@ Generated: 2026-08-16T19:29:54.046579+00:00
 | Truth conflict events | 39 |
 | Detected before violation | 39 |
 | **Recall** | **1.0** |
-| Alerts raised | 68 |
-| False alerts | 29 |
-| **Precision** | **0.5735** |
-| False alerts per airspace hour | 1.4 |
+| Alerts raised | 70 |
+| False alerts | 31 |
+| **Precision** | **0.5571** |
+| False alerts per airspace hour | 1.49 |
 | Median warning lead time | 249.0 s |
 | 10th percentile lead time | 146.0 s |
 | Lead time range | 81.0 - 316.0 s |
@@ -65,8 +65,8 @@ turn -- is under-represented, because the generator's manoeuvres fire between 60
 and 240 seconds, usually before the encounter geometry matures. Read this number
 as "the geometry is implemented correctly", not as "this detector never misses".
 
-**Precision of 0.5735 is the real result, and it is not good.**
-29 of 68 alerts were raised for pairs
+**Precision of 0.5571 is the real result, and it is not good.**
+31 of 70 alerts were raised for pairs
 that never actually lost separation. The cause is structural rather than a
 defect: the detector applies a hard threshold to a point estimate. A pair
 predicted to miss by 4.9 NM alerts and a pair predicted at 5.1 NM does not,
@@ -90,7 +90,7 @@ Three changes would improve it, in descending order of value:
    entirely. Unavailable here by construction -- the simulator's plans are never
    published -- and the largest single source of remaining error.
 
-**1.4 false alerts per airspace hour** is the number
+**1.49 false alerts per airspace hour** is the number
 to quote operationally: roughly one spurious alert per hour of traffic. That is
 too many for anyone to use, and improving it is the obvious next piece of work
 on this detector.

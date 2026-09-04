@@ -150,7 +150,8 @@ def render(rows: list[dict[str, Any]], meta: dict[str, Any]) -> str:
         f"generator `{meta['generator_version']}` · detector `{meta['detector_version']}`",
         "",
         "Reproduce with `python eval/run_detector_comparison.py --scenarios "
-        f"{meta['generated_scenarios']} --seed {meta['seed']}`.",
+        f"{meta['generated_scenarios']} --seed {meta['seed']} "
+        f"--family {meta['family']}`.",
         "",
         "## The result",
         "",

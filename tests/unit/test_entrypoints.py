@@ -65,3 +65,33 @@ def test_the_scan_interval_can_be_tuned() -> None:
 def test_unknown_flags_are_rejected(parser: object) -> None:
     with pytest.raises(SystemExit):
         parser.parse_args(["--not-a-real-flag"])  # type: ignore[attr-defined]
+
+
+def test_every_declared_console_script_is_importable() -> None:
+    """`[project.scripts]` is a promise that `pip install` makes to a user.
+
+    An external review found `acp-sim = "acp.sim.cli:main"` declared against a
+    module that does not exist: `pip install` created the shim, the shim failed
+    with `ModuleNotFoundError`, and the entire fast gate stayed green because
+    nothing imported the declared targets. Every other test here exercises a
+    parser directly rather than through the name a user actually types.
+    """
+    import importlib
+    import tomllib
+
+    root = Path(__file__).resolve().parents[2]
+    with (root / "pyproject.toml").open("rb") as handle:
+        scripts = tomllib.load(handle)["project"]["scripts"]
+
+    broken = []
+    for name, target in scripts.items():
+        module_name, _, attribute = target.partition(":")
+        try:
+            module = importlib.import_module(module_name)
+        except ImportError as exc:
+            broken.append(f"{name} -> {target} ({exc})")
+            continue
+        if not callable(getattr(module, attribute, None)):
+            broken.append(f"{name} -> {target} (no callable {attribute!r})")
+
+    assert not broken, "declared console scripts that would fail on install: " + "; ".join(broken)
